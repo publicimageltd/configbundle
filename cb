@@ -1,0 +1,91 @@
+#!/usr/bin/python
+from pathlib import Path
+from typing import Optional
+from typing_extensions import Annotated
+# Hack to disable rich output
+import sys
+sys.modules['rich'] = None
+import typer
+
+
+cli = typer.Typer(no_args_is_help=True)
+
+
+def linked_files(path: Path, subdir: Path = Path('')) -> list[Path]:
+    """Return all linked files in PATH."""
+    return [f for f in (Path(subdir) / path).glob('*') if f.is_symlink()]
+
+
+def bundle_files(path: Path) -> list[Path]:
+    """Return a sorted list of all bundled files."""
+    res = []
+    res.extend(sorted(linked_files(path)))
+    res.extend(sorted(linked_files(path, Path("bin"))))
+    res.extend(sorted(linked_files(path, Path("data"))))
+    return res
+
+
+@cli.command()
+def init(bundle: Path) -> None:
+    """Initialize bundle."""
+    if bundle.exists():
+        print(f"Bundle {bundle}already exists")
+        raise typer.Exit(1)
+    bundle.mkdir(parents=True, exist_ok=True)
+    print(f"Created bundle {bundle}")
+
+
+@cli.command("add")
+@cli.command()
+def ln(bundle: Path, target: Path, link_type: Annotated[str, typer.Argument()] = 'config') -> None:
+    """Create a link to TARGET in BUNDLE."""
+    if link_type == 'config':
+        link_type = ''
+    else:
+        if link_type not in ['bin', 'data']:
+            print(f"Unsupported link type {link_type}")
+            raise typer.Exit(1)
+        else:
+            Path(bundle / link_type).mkdir(exist_ok=True)
+    link: Path = bundle / link_type / target
+    full_target = target.resolve()
+    if not full_target.exists():
+        print(f"Target file {full_target} does not exist")
+        raise typer.Exit(1)
+    # TODO Should we really allow linking directories?
+    if link.exists():
+        print(f"Link {link} already exists")
+        raise typer.Exit(1)
+    link.symlink_to(target.resolve())
+
+
+@cli.command()
+def rm(bundle: Path, file: Path) -> None:
+    """Remove (unlink) FILE in BUNDLE."""
+    target: Path = bundle / file
+    if not target.exists():
+        print(f"File {target} does not exist")
+        raise typer.Exit(1)
+    if target.is_dir():
+        print(f"{target} is  a directory")
+        raise typer.Exit(1)
+    target.unlink()
+
+
+@cli.command()
+def check(bundle: Path) -> None:
+    """Check if all link in BUNDLE point to existing files."""
+    bundled = bundle_files(bundle)
+    print("Nothing implemented")
+
+
+@cli.command()
+def ls(bundle: Path) -> None:
+    """Display the contents of BUNDLE."""
+    bundled = bundle_files(bundle)
+    for file in bundled:
+        print(file)
+
+
+if __name__ == '__main__':
+    cli()
