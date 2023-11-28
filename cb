@@ -1,23 +1,114 @@
 #!/usr/bin/python
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from typing_extensions import Annotated
+from enum import StrEnum
+import yaml
 # Hack to disable rich output
 import sys
-sys.modules['rich'] = None
+sys.modules['rich'] = None  # type: ignore
 import typer
 
-
+APP_NAME = 'configbundle'
 cli = typer.Typer(no_args_is_help=True)
+
+
+class ConfigKey(StrEnum):
+    """Keys for the configuration dictionary."""
+    REPO = "repo"
+
+
+def assert_path(p: Path, assertion: Callable[[Path], bool] = Path.exists,
+                msg: str | None = '{p} does not exist',
+                cancel: bool = True) -> bool:
+    """Check if path P satisfies ASSERTION, exiting if CANCEL is True."""
+    result = assertion(p)
+    if not result:
+        if msg:
+            print(msg.format(p=p))
+        if cancel:
+            raise typer.Exit(1)
+    return result
+
+
+def get_config_file() -> Path:
+    """Return the app's default configuration file."""
+    return Path(typer.get_app_dir(APP_NAME)) / "config.yaml"
+
+
+def read_config(no_checks: bool = False) -> dict:
+    """Read the YAML configuration stored in the app's configuration file."""
+    config_file = get_config_file()
+    # Optionally check if config file exists
+    msg = None if no_checks else "No configuration file found at {p}"
+    cancel = False if no_checks else True
+    exists = assert_path(config_file, msg=msg, cancel=cancel)
+    # Load
+    if exists:
+        with open(config_file, 'r') as file:
+            result = yaml.safe_load(file)
+    else:
+        result = {}
+    # Optionally check important configuration parameters:
+    if not no_checks:
+        repo = result.get(ConfigKey.REPO) or None
+        if repo is None:
+            print("No path to main repository defined")
+            raise typer.Exit(1)
+    return result
+
+
+def write_config(config_dict: dict) -> None:
+    """Write the configuration to the app's config file, possibly creating it."""
+    config_file = get_config_file()
+    if not assert_path(config_file, cancel=False, msg='Creating configuration file {p}'):
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_file, 'w') as file:
+        yaml.dump({ str(k): str(v) for k, v in config_dict.items()}, file)
+
+
+def get_repo() -> Path:
+    """Return the path to the bundle repository."""
+    config = read_config()
+    repo_path = Path(config[ConfigKey.REPO])
+    assert_path(repo_path, msg="There is no repository directory at {p}")
+    assert_path(repo_path, Path.is_dir, msg="{p} is not a directory")
+    return repo_path
+
+def get_bundle(bundle: str) -> Path:
+    """Find and assert the path to BUNDLE."""
+    repo_path = get_repo()
+    bundle_path = repo_path / bundle
+    assert_path(bundle_path)
+    assert_path(bundle_path, Path.is_dir, msg="{p} is not a directory")
+    return bundle_path
+
+def get_link_dir(bundle: str, link_type: str) -> Path:
+    """Get directory for bundled links of type LINKE_TYPE."""
+    bundle_path = get_bundle(bundle)
+    if link_type not in ['bin', 'data', 'config']:
+        print(f"Unsupported link type {link_type}")
+        raise typer.Exit(1)
+    if link_type == 'config':
+        return bundle_path
+    else:
+        return bundle_path / link_type
 
 
 def linked_files(path: Path, subdir: Path = Path('')) -> list[Path]:
     """Return all linked files in PATH."""
-    return [f for f in (Path(subdir) / path).glob('*') if f.is_symlink()]
+    return [f for f in (Path(path) / subdir).glob('*') if f.is_symlink()]
 
 
-def bundle_files(path: Path) -> list[Path]:
-    """Return a sorted list of all bundled files."""
+def get_bundles() -> list[str]:
+    """Return a list of all bundles (no paths)."""
+    repo_dir = get_repo()
+    return [f"{file.name}" for file in repo_dir.glob('*') if file.is_dir()]
+
+
+def bundle_files(bundle: str) -> list[Path]:
+    """Return a sorted list of all files bundled in PATH."""
+    path = get_bundle(bundle)
     res = []
     res.extend(sorted(linked_files(path)))
     res.extend(sorted(linked_files(path, Path("bin"))))
@@ -25,33 +116,42 @@ def bundle_files(path: Path) -> list[Path]:
     return res
 
 
+# -----------------------------------------------------------
+
 @cli.command()
-def init(bundle: Path) -> None:
+def setup(repo_dir: Path) -> None:
+    """Initialize a repository at REPO_DIR and store it in the configuration."""
+    repo_dir = repo_dir.resolve()
+    assert_path(repo_dir, assertion=lambda p: not Path.exists(p),
+                msg="Could not create repository, {p} already exists")
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created bundle repository at {repo_dir}")
+    config = read_config(no_checks=True)
+    write_config(config | { ConfigKey.REPO: repo_dir})
+
+
+@cli.command()
+def init(bundle: str) -> None:
     """Initialize bundle."""
-    if bundle.exists():
-        print(f"Bundle {bundle}already exists")
-        raise typer.Exit(1)
-    bundle.mkdir(parents=True, exist_ok=True)
+    repo_path = get_repo()
+    bundle_path = repo_path / bundle
+    assert_path(bundle_path, assertion=lambda p: not Path.exists(p),
+                msg="Bundle {p} already exists")
+    bundle_path.mkdir(parents=True, exist_ok=True)
     print(f"Created bundle {bundle}")
 
 
 @cli.command("add")
 @cli.command()
-def ln(bundle: Path, target: Path, link_type: Annotated[str, typer.Argument()] = 'config') -> None:
+def ln(bundle: str,
+       target: Path,
+       link_type: Annotated[str, typer.Argument()] = 'config') -> None:
     """Create a link to TARGET in BUNDLE."""
-    if link_type == 'config':
-        link_type = ''
-    else:
-        if link_type not in ['bin', 'data']:
-            print(f"Unsupported link type {link_type}")
-            raise typer.Exit(1)
-        else:
-            Path(bundle / link_type).mkdir(exist_ok=True)
-    link: Path = bundle / link_type / target
-    full_target = target.resolve()
-    if not full_target.exists():
-        print(f"Target file {full_target} does not exist")
-        raise typer.Exit(1)
+    assert_path(target, msg="Target {p} does not exist")
+    link_dir = get_link_dir(bundle, link_type)
+    if link_type != 'config':
+        link_dir.mkdir(parents=True, exist_ok=True)
+    link = link_dir / target
     # TODO Should we really allow linking directories?
     if link.exists():
         print(f"Link {link} already exists")
@@ -60,31 +160,57 @@ def ln(bundle: Path, target: Path, link_type: Annotated[str, typer.Argument()] =
 
 
 @cli.command()
-def rm(bundle: Path, file: Path) -> None:
+def rm(bundle: str,
+       file: Path,
+       link_type: Annotated[str, typer.Argument()] = 'config') -> None:
     """Remove (unlink) FILE in BUNDLE."""
-    target: Path = bundle / file
+    link_dir = get_link_dir(bundle, link_type)
+    target = link_dir / file
     if not target.exists():
         print(f"File {target} does not exist")
-        raise typer.Exit(1)
-    if target.is_dir():
-        print(f"{target} is  a directory")
         raise typer.Exit(1)
     target.unlink()
 
 
 @cli.command()
-def check(bundle: Path) -> None:
-    """Check if all link in BUNDLE point to existing files."""
+def check(bundle: str) -> None:
+    """Check if all links in BUNDLE point to existing files."""
     bundled = bundle_files(bundle)
-    print("Nothing implemented")
+    for file in bundled:
+        path = file.resolve()
+        if not path.exists():
+            print(f"File {file} links to non-existing file {path}")
 
 
 @cli.command()
-def ls(bundle: Path) -> None:
-    """Display the contents of BUNDLE."""
+def cleanup(bundle: str) -> None:
+    """Remove invalid links."""
     bundled = bundle_files(bundle)
     for file in bundled:
-        print(file)
+        path = file.resolve()
+        if not path.exists():
+            print(f"Removing link to non-existing file {path}")
+            file.unlink()
+
+
+@cli.command()
+def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
+    """Display th contents of BUNDLE. If no bundle is given, list all bundles in the repository."""
+    if bundle is None:
+        list_this = get_bundles()
+    else:
+        list_this = bundle_files(bundle)
+    for item in list_this:
+        print(item)
+
+
+@cli.command()
+def config() -> None:
+    """Display the location and the contents of the configuration file."""
+    config_file = get_config_file()
+    config = read_config()
+    print(f"{config_file}:")
+    print(config)
 
 
 if __name__ == '__main__':
