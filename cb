@@ -5,7 +5,8 @@ from typing_extensions import Annotated
 # Hack to disable rich output
 import sys
 sys.modules['rich'] = None  # type: ignore
-import typer
+import typer  # noqa: E402
+
 
 APP_NAME = 'configbundle'
 cli = typer.Typer(no_args_is_help=True)
