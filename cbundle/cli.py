@@ -95,10 +95,11 @@ def ln(bundle: str,
     link_dir = get_link_dir(bundle, link_type)
     if link_type != 'config':
         link_dir.mkdir(parents=True, exist_ok=True)
-    link = link_dir / target
+    link = link_dir / target.name
     if link.exists():
         print(f"Link {link} already exists")
         raise typer.Exit(1)
+    # print(f"Creating file {link} pointing to {target.resolve()}")
     link.symlink_to(target.resolve())
 
 
@@ -108,11 +109,15 @@ def rm(bundle: str,
        link_type: Annotated[str, typer.Argument()] = 'config') -> None:
     """Remove (unlink) FILE in BUNDLE."""
     link_dir = get_link_dir(bundle, link_type)
-    target = link_dir / file
+    target: Path = link_dir / file
     if not target.exists():
         print(f"File {target} does not exist")
         raise typer.Exit(1)
-    target.unlink()
+    if target.is_dir():
+        # TODO Test fails, solve this!
+        print(f"TEST Trying to remove {target}, but it is a directory")
+    else:
+        target.unlink()
 
 
 @cli.command()
