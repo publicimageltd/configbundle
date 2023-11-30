@@ -115,6 +115,7 @@ def rm(bundle: str,
         raise typer.Exit(1)
     if target.is_dir():
         # TODO Test fails, solve this!
+        # USE os.unlink() for both cases
         print(f"TEST Trying to remove {target}, but it is a directory")
     else:
         target.unlink()
