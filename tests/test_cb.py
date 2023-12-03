@@ -7,6 +7,11 @@ from cbundle import cli as cb  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # -----------------------------------------------------------
+# Global Variables and Constants
+
+IGNORE_BUNDLE_ARG = 'ignore_this_arg'
+
+# -----------------------------------------------------------
 # FIXTURES
 
 @pytest.fixture
@@ -24,7 +29,7 @@ def empty_dir(tmp_path: Path) -> Path:
     """Return an empty directory."""
     filename = tmp_path / "dir"
     filename.mkdir()
-    print(f"TEST Creating empty dir {filename}")
+    print(f"FIXTURE empty_dir: Creating empty dir {filename}")
     return filename
 
 
@@ -59,38 +64,12 @@ def test_files(test_text_file_names,
     return res
 
 
-@pytest.fixture(scope="session")
-def test_bundle(test_files,
-                tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create an example bundle for the tests."""
-    bundledir: Path = tmp_path_factory.mktemp("linked-bundle")
-    bin_dir = bundledir / "bin"
-    data_dir = bundledir / "data"
-    for f in test_files:
-        link = bundledir / f.name
-        link.symlink_to(f)
-    data_dir.mkdir()
-    bin_dir.mkdir()
-    return bundledir
-
-
 # -----------------------------------------------------------
 # TESTS
 
-def test_linked_files(test_text_file_names,
-                      test_bundle):
-    """Test if linked_files returns the bundle's linked files."""
-    # Limit to text files, because the others are in subdirs
-    expected_files = [Path(f).name for f in test_text_file_names]
-    found_files = cb.linked_files(test_bundle)
-    for f in found_files:
-        assert f.is_symlink()
-    for f in found_files:
-        assert f.name in expected_files
-
 
 def test_get_bundles(empty_dir, monkeypatch):
-    """Test if bundle dirs are found."""
+    """Test _get_bundles: if bundle dirs are found."""
     monkeypatch.setattr(cb, "get_repo", lambda: empty_dir)
     path = empty_dir
     dir_names = ['one', 'two', 'three']
@@ -98,15 +77,6 @@ def test_get_bundles(empty_dir, monkeypatch):
         (path / name).mkdir()
     for f in cb.get_bundles():
         assert f in dir_names
-
-
-def test_get_link_dir(test_bundle, monkeypatch):
-    """Test get_link_dir with a mock bundle."""
-    monkeypatch.setattr(cb, "get_bundle", lambda x: test_bundle)
-    bundle = "bundle"
-    assert cb.get_link_dir(bundle, 'config') == test_bundle
-    assert cb.get_link_dir(bundle, 'bin') == test_bundle / "bin"
-    assert cb.get_link_dir(bundle, 'data') == test_bundle / "data"
 
 
 def test_init(empty_dir, monkeypatch):
@@ -118,85 +88,70 @@ def test_init(empty_dir, monkeypatch):
         cb.init(bundle)
 
 
-def test_ln_config_file(empty_dir, test_text_file, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    cb.ln("ignored_argument", test_text_file)
-    linkfile = empty_dir / test_text_file.name
-    assert linkfile.exists()
-    assert linkfile.resolve() == test_text_file.resolve()
-    with pytest.raises(click.exceptions.Exit):
-        cb.ln('ignored argument', test_text_file)
+def test_move(empty_dir):
+
+    def write_test_file(filename):
+        with open(filename, 'w') as file:
+            file.writelines(['dummy content', 'two lines'])
+
+    src_file = empty_dir / "srcfile"
+    dest_file = empty_dir / "destfile"
+    write_test_file(src_file)
+    assert src_file.exists()
+    cb._move(src_file, dest_file)
+    assert not src_file.exists()
+    assert dest_file.exists()
+
+def test_copy(empty_dir):
+
+    def write_test_file(filename):
+        with open(filename, 'w') as file:
+            file.writelines(['dummy content', 'two lines'])
+
+    # Copy to file:
+    src_file = empty_dir / "srcfile"
+    dest_file = empty_dir / "destfile"
+    write_test_file(src_file)
+    assert src_file.exists()
+    cb._copy(src_file, dest_file)
+    assert src_file.exists()
+    assert dest_file.exists()
+    # Copy to dir:
+    Path(empty_dir / "testdir").mkdir()
+    dest_file = empty_dir / "testdir"
+    cb._copy(src_file, dest_file)
+    assert Path(dest_file / src_file).exists()
 
 
-def test_ln_bin_file(empty_dir, test_text_file, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    cb.ln("ignored_argument", test_text_file, 'bin')
-    linkfile = empty_dir / "bin" / test_text_file.name
-    print(linkfile)
-    assert linkfile.exists()
-    assert linkfile.resolve() == test_text_file.resolve()
-    with pytest.raises(click.exceptions.Exit):
-        cb.ln('ignored argument', test_text_file, 'bin')
 
-def test_cleanup_config(empty_dir, test_text_file, monkeypatch):
+def test_rm(empty_dir, monkeypatch):
     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    linkfile = empty_dir / test_text_file.name
-    cb.ln("ignored", test_text_file)
-    assert linkfile.exists()
-    assert linkfile.is_symlink()
-    test_text_file.unlink()
-    # exists() follows links, so we cannot check here that
-    # the link file still exists.
-    # in Python 3.12:  assert linkfile.exists(follow_symlinks=False)
-    cb.cleanup("ignored")
-    assert not linkfile.is_symlink()
+
+    def write_test_file(filename):
+        with open(filename, 'w') as file:
+            file.writelines(['dummy content', 'two lines'])
+
+    testfile = empty_dir / "testfile"
+    linkfile = testfile.with_suffix(cb.LINK_SUFFIX)
+    write_test_file(empty_dir / "testfile")
+    linkfile.symlink_to(testfile)
+
+    cb.rm(IGNORE_BUNDLE_ARG, testfile)
+    assert not testfile.exists()
     assert not linkfile.exists()
 
-def test_cleanup_bin(empty_dir, test_text_file, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    linkfile = empty_dir / "bin" / test_text_file.name
-    cb.ln("ignored", test_text_file, "bin")
-    assert linkfile.exists()
-    assert linkfile.is_symlink()
-    test_text_file.unlink()
-    # exists() follows links, so we cannot check here that
-    # the link file still exists.
-    # in Python 3.12:  assert linkfile.exists(follow_symlinks=False)
-    cb.cleanup("ignored")
-    assert not linkfile.is_symlink()
-    assert not linkfile.exists()
 
-
-def test_rm_config_link(empty_dir, test_text_file, monkeypatch):
+def test_rmdir(empty_dir, monkeypatch):
     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    linkfile = empty_dir / test_text_file.name
-    cb.ln("ignore_this", test_text_file)
-    assert linkfile.exists()
-    assert linkfile.is_symlink()
-    cb.rm("ignore this", test_text_file.name)
-    assert not linkfile.exists()
-    assert test_text_file.exists()
-    with pytest.raises(click.exceptions.Exit):
-        cb.rm("ignorabimus", test_text_file.name)
 
-def test_link_dir(empty_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    dir_to_link = tmp_path / "targetdir"
-    dir_to_link.mkdir()
-    cb.ln("ignore", dir_to_link)
-    linkfile = empty_dir / "targetdir"
-    assert linkfile.exists()
-    assert linkfile.is_symlink()
-    with pytest.raises(click.exceptions.Exit):
-        cb.ln("ignorabimus", dir_to_link)
-    
+    def write_test_file(filename):
+        with open(filename, 'w') as file:
+            file.writelines(['dummy content', 'two lines'])
 
-def test_rm_dir(empty_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    dir_to_link = tmp_path / "targetdir"
-    dir_to_link.mkdir()
-    cb.ln("ignore", dir_to_link)
-    cb.rm("ignore", dir_to_link)
-    assert dir_to_link.exists()
-    assert not (empty_dir / "targetdir").exists()
-    
+    Path(empty_dir / "testdir").mkdir()
+    write_test_file(empty_dir / "testfile")
+    write_test_file(empty_dir / "testdir" / "testfile")
+    write_test_file(empty_dir / ".another_testfile")
+
+    cb.rmdir(IGNORE_BUNDLE_ARG)
+    assert not empty_dir.exists()
