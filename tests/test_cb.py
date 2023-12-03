@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import pytest
 import click
+import subprocess
 import sys
 sys.path.append('../cbundle')
 from cbundle import cli as cb  # noqa: E402
@@ -131,7 +132,7 @@ def test_rm(empty_dir, monkeypatch):
             file.writelines(['dummy content', 'two lines'])
 
     testfile = empty_dir / "testfile"
-    linkfile = testfile.with_suffix(cb.LINK_SUFFIX)
+    linkfile = cb._suffix(testfile)
     write_test_file(empty_dir / "testfile")
     linkfile.symlink_to(testfile)
 
@@ -159,8 +160,17 @@ def test_rmdir(empty_dir, monkeypatch):
 def test_link_back(test_text_file, empty_dir):
     link_file = Path(empty_dir / "linkfile")
     cb._link_back(link_file, test_text_file)
-    link_file = link_file.with_suffix(cb.LINK_SUFFIX)
-    assert Path(link_file).exists()
-    assert Path(link_file).resolve() == test_text_file
+    link_file = cb._suffix(link_file)
+    assert link_file.exists()
+    assert link_file.resolve() == test_text_file
 
-def 
+def test_bundle_file(test_text_file, empty_dir):
+    cb._bundle_file(test_text_file, empty_dir)
+    moved_file = empty_dir / test_text_file.name
+    # backlink = cb._suffix(moved_file)
+    subprocess.call(["tree", str(test_text_file.parent)])
+    subprocess.call(["tree", str(empty_dir)])
+    assert test_text_file.is_symlink()
+    assert test_text_file.resolve() == moved_file
+
+#    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)

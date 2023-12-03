@@ -10,19 +10,6 @@ sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
 
 # -----------------------------------------------------------
-# Ideas:
-#
-# - TODO  We associate the bundled file with its target
-# - For this, we either use a second file with informations (say,
-#   ".dot_xy")
-#    - Can this be a link to the target? Will there be a circular
-#      reference? No, it works fine, since the names are not
-#      identical.
-#      TODO Maybe use instead: original filename -
-#     and "original filename.link"
-#
-# - TODO "Add" register links to the target file.
-
 
 
 
@@ -31,10 +18,14 @@ import typer  # noqa: E402
 
 APP_NAME = 'configbundle'
 cli = typer.Typer(no_args_is_help=True)
-LINK_SUFFIX = '.link'
 
 # -----------------------------------------------------------
 # Utilities
+
+def _suffix(file: Path) -> Path:
+    """Return FILE with the suffix .link added."""
+    return Path(f"{file}.link")
+
 
 def assert_path(p: Path, assertion: Callable[[Path], bool] = Path.exists,
                 msg: str | None = '{p} does not exist',
@@ -103,10 +94,11 @@ def _copy(file: Path, target_path: Path) -> Path:
 
 
 def _link_back(link_file: Path, target_file: Path) -> None:
-    """Create a symlink pointing to TARGET_FILE with LINK_SUFFIX added."""
-    link_file.with_suffix(LINK_SUFFIX).symlink_to(target_file.absolute())
+    """Create a suffixed symlink pointing to TARGET_FILE."""
+    link_file = _suffix(link_file)
+    link_file.symlink_to(target_file.absolute())
 
-# TODO Write test
+
 def _bundle_file(file: Path, bundle_dir: Path) -> None:
     """Move FILE into BUNDLE_DIR and replace FILE with a link pointing to the bundled file.
        Additionally create a backlink in the bundle dir."""
@@ -149,7 +141,7 @@ def copy(bundle: str, file: Path, target_file: Path) -> None:
 def restore(bundle: str, file: Path) -> None:
     """Copy FILE to the location defined by its associated .link file."""
     bundle_file = get_bundle(bundle) / file
-    link_file = bundle_file.with_suffix(LINK_SUFFIX)
+    link_file = _suffix(bundle_file)
     assert_path(bundle_file)
     assert_path(link_file)
     _copy(bundle_file, link_file.resolve())
@@ -160,7 +152,7 @@ def rm(bundle: str, file: Path) -> None:
     """Remove FILE in the bundle and it associated link."""
     bundle_file = get_bundle(bundle) / file
     assert_path(bundle_file)
-    link_file = bundle_file.with_suffix(LINK_SUFFIX)
+    link_file = _suffix(bundle_file)
     if link_file.exists():
         link_file.unlink()
     bundle_file.unlink()
