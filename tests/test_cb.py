@@ -123,7 +123,6 @@ def test_copy(empty_dir):
     assert Path(dest_file / src_file).exists()
 
 
-
 def test_rm(empty_dir, monkeypatch):
     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
 
@@ -155,3 +154,13 @@ def test_rmdir(empty_dir, monkeypatch):
 
     cb.rmdir(IGNORE_BUNDLE_ARG)
     assert not empty_dir.exists()
+
+
+def test_link_back(test_text_file, empty_dir):
+    link_file = Path(empty_dir / "linkfile")
+    cb._link_back(link_file, test_text_file)
+    link_file = link_file.with_suffix(cb.LINK_SUFFIX)
+    assert Path(link_file).exists()
+    assert Path(link_file).resolve() == test_text_file
+
+def 

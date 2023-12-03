@@ -102,7 +102,6 @@ def _copy(file: Path, target_path: Path) -> Path:
     return shutil.copy2(f"{file}", f"{target_file}")
 
 
-# TODO Write test
 def _link_back(link_file: Path, target_file: Path) -> None:
     """Create a symlink pointing to TARGET_FILE with LINK_SUFFIX added."""
     link_file.with_suffix(LINK_SUFFIX).symlink_to(target_file.absolute())
