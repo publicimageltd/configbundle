@@ -10,10 +10,6 @@ sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
 
 # -----------------------------------------------------------
-
-
-
-# -----------------------------------------------------------
 # Global Variables
 
 APP_NAME = 'configbundle'
@@ -51,7 +47,8 @@ def _ignore(file: Path) -> bool:
 def get_repo() -> Path:
     """Return the path to the bundle repository."""
     repo_path = Path(typer.get_app_dir(APP_NAME))
-    assert_path(repo_path, msg="There is no repository directory at {p}")
+    if not repo_path.exists():
+        repo_path.mkdir()
     assert_path(repo_path, Path.is_dir, msg="{p} is not a directory")
     return repo_path
 
@@ -78,7 +75,8 @@ def _move(file: Path, target_path: Path) -> Path:
         target_file = target_path / file.name
     else:
         target_file = target_path
-    return file.rename(target_file)
+    shutil.move(str(file), str(target_file))
+    return Path(target_file)
 
 
 def _copy(file: Path, target_path: Path) -> Path:
@@ -175,9 +173,17 @@ def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
             print(item)
     else:
         bundle_dir = get_bundle(bundle)
-        # TODO check if tree is installed
-        # TODO Process return value
-        subprocess.call(["tree", str(bundle_dir.relative_to(Path.cwd()))])
+        path = bundle_dir # .relative_to(Path.cwd())
+        cmd = [str(path)]
+        if shutil.which("tree"):
+            cmd.insert(0, "tree")
+        elif shutil.which("ls"):
+            cmd.insert(0, "ls")
+            cmd.append("-al")
+        else:
+            print("Need either ls or tree to list contents")
+            raise typer.Exit(1)
+        subprocess.call(cmd)
 
 
 if __name__ == '__main__':
