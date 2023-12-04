@@ -7,7 +7,7 @@ license = "GPL"
 readme = "README.md"
 
 [tool.poetry.scripts]
-cli_script="cbundle.cli:cli"
+cbundle="cbundle.cli:cli"
 
 [tool.poetry.dependencies]
 python = "^3.11"
