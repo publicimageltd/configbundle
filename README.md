@@ -17,19 +17,19 @@ TODO
 
 ## Command Overview
 
-`add` : Add FILE to BUNDLE, replacing it with a link to the bundled file.
+`cbundle add` : Add FILE to BUNDLE, replacing it with a link to the bundled file.
 
-`copy` : Copy FILE in BUNDLE to TARGET_FILE.
+`cbundle copy` : Copy FILE in BUNDLE to TARGET_FILE.
 
-`init` : Initialize bundle.
+`cbundle init` : Initialize bundle.
 
-`ls` : Display the contents of BUNDLE, not descending into directories.
+`cbundle ls` : Display the contents of BUNDLE, not descending into directories.
 
-`restore` : Copy FILE to the location defined by its associated .link file.
+`cbundle restore` : Copy FILE to the location defined by its associated .link file.
 
-`rm` : Remove FILE in the bundle and it associated link.
+`cbundle rm` : Remove FILE in the bundle and it associated link.
 
-`rmdir`  :Remove BUNDLE and its contents.
+`cbundle rmdir`  :Remove BUNDLE and its contents.
 
 ## About the repository
 
