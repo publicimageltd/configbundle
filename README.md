@@ -17,26 +17,19 @@ TODO
 
 ## Command Overview
 
-add
-: Add FILE to BUNDLE, replacing it with a link to the bundled file.
+`add` : Add FILE to BUNDLE, replacing it with a link to the bundled file.
 
-copy
-: Copy FILE in BUNDLE to TARGET_FILE.
+`copy` : Copy FILE in BUNDLE to TARGET_FILE.
 
-init
-: Initialize bundle.
+`init` : Initialize bundle.
 
-ls
-: Display the contents of BUNDLE, not descending into directories.
+`ls` : Display the contents of BUNDLE, not descending into directories.
 
-restore
-: Copy FILE to the location defined by its associated .link file.
+`restore` : Copy FILE to the location defined by its associated .link file.
 
-rm
-: Remove FILE in the bundle and it associated link.
+`rm` : Remove FILE in the bundle and it associated link.
 
-rmdir
- :Remove BUNDLE and its contents.
+`rmdir`  :Remove BUNDLE and its contents.
 
 ## About the repository
 
