@@ -2,13 +2,16 @@
 from pathlib import Path
 from typing import Callable, Optional
 from typing_extensions import Annotated
-# Hack to disable rich output
 import sys
+import re
 import shutil
 import subprocess
+# Hack to disable rich output
 sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
 
+# TODO Rewrite Tests
+#
 # -----------------------------------------------------------
 # Global Variables
 
@@ -49,7 +52,8 @@ def _suffix(file: Path) -> Path:
     return Path(f"{file}.link")
 
 
-def assert_path(p: Path, assertion: Callable[[Path], bool] = Path.exists,
+def assert_path(p: Path,
+                assertion: Callable[[Path], bool] = Path.exists,
                 msg: str | None = '{p} does not exist',
                 cancel: bool = True) -> bool:
     """Check if path P satisfies ASSERTION, exiting if CANCEL is True."""
@@ -164,6 +168,9 @@ def copy(bundle: str, file: Path, target_file: Path) -> None:
     _move(bundle_file, target_file)
 
 
+# TODO Currently this restores the original file, without link.
+#      How should we call a command which restores the file AS LINK?
+#      Or add an option "--as-link"
 @cli.command()
 def restore(bundle: str, file: Path) -> None:
     """Copy FILE to the location defined by its associated .link file."""
