@@ -215,6 +215,13 @@ def destroy() -> None:
         print("No bundles to delete")
 
 
+# TODO Write tests
+@cli.command()
+def path() -> None:
+    """Print the path to the bundle repositor."""
+    print(get_repo())
+
+
 @cli.command()
 def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE, not descending into directories.
