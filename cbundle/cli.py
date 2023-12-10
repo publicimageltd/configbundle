@@ -142,7 +142,14 @@ def restore(bundle: str, file: Path) -> None:
     link_file = _suffix(bundle_file)
     assert_path(bundle_file)
     assert_path(link_file)
-    _copy(bundle_file, link_file.resolve())
+    # TODO That does not handle chained links properly
+    # A more stable solution would be to iterate over readlink
+    # until the bundle target has been reached, and use result n-1
+    target_file = link_file.readlink()
+    if target_file.exists():
+        target_file.unlink()
+    print(f"Restoring {target_file} from bundle {bundle}")
+    _copy(bundle_file, target_file)
 
 
 @cli.command()
