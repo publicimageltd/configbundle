@@ -18,6 +18,14 @@ cli = typer.Typer(no_args_is_help=True)
 # -----------------------------------------------------------
 # Utilities
 
+
+def assert_bundle_arg(s: str) -> None:
+    """Assert that bundle arg is not pathlike."""
+    if re.search("~|/", s):
+        print("Argument BUNDLE has to be a simple term (no path)")
+        raise typer.Exit(1)
+
+
 def _suffix(file: Path) -> Path:
     """Return FILE with the suffix .link added."""
     return Path(f"{file}.link")
@@ -111,6 +119,7 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 def init(bundle: str) -> None:
     """Initialize bundle."""
     repo_path = get_repo()
+    assert_bundle_arg(bundle)
     bundle_path = repo_path / bundle
     assert_path(bundle_path, assertion=lambda p: not Path.exists(p),
                 msg="Bundle {p} already exists")
@@ -121,6 +130,7 @@ def init(bundle: str) -> None:
 @cli.command()
 def add(bundle: str, file: Path) -> None:
     "Add FILE to BUNDLE, replacing it with a link to the bundled file."
+    assert_bundle_arg(bundle)
     assert_path(file)
     bundle_dir = get_bundle(bundle)
     _bundle_file(file, bundle_dir)
@@ -130,6 +140,7 @@ def add(bundle: str, file: Path) -> None:
 def copy(bundle: str, file: Path, target_file: Path) -> None:
     """Copy FILE in BUNDLE to TARGET_FILE.
     FILE's path is relative to the bundle root directory."""
+    assert_bundle_arg(bundle)
     bundle_file = get_bundle(bundle) / file
     assert_path(bundle_file)
     _move(bundle_file, target_file)
@@ -138,6 +149,7 @@ def copy(bundle: str, file: Path, target_file: Path) -> None:
 @cli.command()
 def restore(bundle: str, file: Path) -> None:
     """Copy FILE to the location defined by its associated .link file."""
+    assert_bundle_arg(bundle)
     bundle_file = get_bundle(bundle) / file
     link_file = _suffix(bundle_file)
     assert_path(bundle_file)
@@ -155,6 +167,7 @@ def restore(bundle: str, file: Path) -> None:
 @cli.command()
 def rm(bundle: str, file: Path) -> None:
     """Remove FILE in the bundle and it associated link."""
+    assert_bundle_arg(bundle)
     bundle_file = get_bundle(bundle) / file
     assert_path(bundle_file)
     link_file = _suffix(bundle_file)
@@ -166,21 +179,23 @@ def rm(bundle: str, file: Path) -> None:
 @cli.command()
 def rmdir(bundle: str) -> None:
     """Remove BUNDLE and its contents."""
+    assert_bundle_arg(bundle)
     bundle_dir = get_bundle(bundle)
-    assert_path(bundle_dir)
     shutil.rmtree(str(bundle_dir))
 
 
 @cli.command()
 def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
-    """Display the contents of BUNDLE, not descendin in directories.
+    """Display the contents of BUNDLE, not descending into directories.
     If no bundle is given, list all bundles in the repository."""
     if bundle is None:
         for item in get_bundles():
             print(item)
     else:
+        assert_bundle_arg(bundle)
         bundle_dir = get_bundle(bundle)
         path = bundle_dir # .relative_to(Path.cwd())
+        # TODO Replace external tree with handmade internal f()
         cmd = [str(path)]
         if shutil.which("tree"):
             cmd.insert(0, "tree")
