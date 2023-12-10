@@ -18,6 +18,24 @@ cli = typer.Typer(no_args_is_help=True)
 # -----------------------------------------------------------
 # Utilities
 
+def _ask(prompt: str, default: str) -> bool:
+    """Prompt the user for a decision.
+    DEFAULT is the default option (one of 'y','n','yes','no')."""
+    choice = None
+    option_set = {'y', 'n', 'yes', 'no'}
+    yes_set = {'y', 'yes'}
+    default_set = {default}
+    options = [str.upper(e) if e in default_set else e
+               for e in option_set]
+    prompt += f" {options} "
+    while choice is None:
+        _input = str.lower(input(prompt) or default)
+        if _input in option_set:
+            choice = _input in yes_set
+        else:
+            print("Please pick one of the options.")
+    return choice
+
 
 def assert_bundle_arg(s: str) -> None:
     """Assert that bundle arg is not pathlike."""
@@ -182,6 +200,19 @@ def rmdir(bundle: str) -> None:
     assert_bundle_arg(bundle)
     bundle_dir = get_bundle(bundle)
     shutil.rmtree(str(bundle_dir))
+
+
+# TODO Write tests
+@cli.command()
+def destroy() -> None:
+    """Delete all bundles."""
+    repo_dir = get_repo()
+    bundles = get_bundles()
+    n = len(bundles)
+    if bundles and _ask(f"Delete all {n} bundles?", "n"):
+        shutil.rmtree(str(repo_dir))
+    else:
+        print("No bundles to delete")
 
 
 @cli.command()
