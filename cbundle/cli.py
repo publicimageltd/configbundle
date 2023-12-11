@@ -10,6 +10,8 @@ import subprocess
 sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
 
+
+# TODO Make main arg in cmds path-like: bundle/file
 # TODO Rewrite Tests
 #
 # -----------------------------------------------------------
@@ -21,6 +23,7 @@ cli = typer.Typer(no_args_is_help=True)
 # -----------------------------------------------------------
 # Utilities
 
+# TODO Replace with typer.confirm("....")
 def _ask(prompt: str, default: str) -> bool:
     """Prompt the user for a decision.
     DEFAULT is the default option (one of 'y','n','yes','no')."""
@@ -40,13 +43,6 @@ def _ask(prompt: str, default: str) -> bool:
     return choice
 
 
-def assert_bundle_arg(s: str) -> None:
-    """Assert that bundle arg is not pathlike."""
-    if re.search("~|/", s):
-        print("Argument BUNDLE has to be a simple term (no path)")
-        raise typer.Exit(1)
-
-
 def _suffix(file: Path) -> Path:
     """Return FILE with the suffix .link added."""
     return Path(f"{file}.link")
@@ -63,7 +59,7 @@ def assert_path(p: Path,
             print(msg.format(p=p))
         if cancel:
             raise typer.Exit(1)
-    return result
+    return result    
 
 
 def _ignore(file: Path) -> bool:
@@ -81,21 +77,6 @@ def get_repo() -> Path:
         repo_path.mkdir()
     assert_path(repo_path, Path.is_dir, msg="{p} is not a directory")
     return repo_path
-
-
-def get_bundle(bundle: str) -> Path:
-    """Find and assert the path to BUNDLE."""
-    repo_path = get_repo()
-    bundle_path = repo_path / bundle
-    assert_path(bundle_path)
-    assert_path(bundle_path, Path.is_dir, msg="{p} is not a directory")
-    return bundle_path
-
-
-def get_bundles() -> list[str]:
-    """Return a list of all bundles (no paths)."""
-    repo_dir = get_repo()
-    return [f"{file.name}" for file in repo_dir.glob('*') if file.is_dir()]
 
 
 def _move(file: Path, target_path: Path) -> Path:
@@ -137,27 +118,18 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 
 
 # -----------------------------------------------------------
+# TODO Adapt to new argument scheme
 @cli.command()
-def init(bundle: str) -> None:
-    """Initialize bundle."""
-    repo_path = get_repo()
-    assert_bundle_arg(bundle)
-    bundle_path = repo_path / bundle
-    assert_path(bundle_path, assertion=lambda p: not Path.exists(p),
-                msg="Bundle {p} already exists")
-    bundle_path.mkdir(parents=True, exist_ok=True)
-    print(f"Created bundle {bundle}")
-
-
-@cli.command()
-def add(bundle: str, file: Path) -> None:
+def add(file: Path, bundle: BundleDir) -> None:
     "Add FILE to BUNDLE, replacing it with a link to the bundled file."
+    # HEREAMI 
     assert_bundle_arg(bundle)
     assert_path(file)
     bundle_dir = get_bundle(bundle)
     _bundle_file(file, bundle_dir)
 
 
+# TODO Adapt to new argument scheme
 @cli.command()
 def copy(bundle: str, file: Path, target_file: Path) -> None:
     """Copy FILE in BUNDLE to TARGET_FILE.
@@ -168,6 +140,7 @@ def copy(bundle: str, file: Path, target_file: Path) -> None:
     _move(bundle_file, target_file)
 
 
+# TODO Adapt to new argument scheme
 # TODO Currently this restores the original file, without link.
 #      How should we call a command which restores the file AS LINK?
 #      Or add an option "--as-link"
@@ -189,6 +162,10 @@ def restore(bundle: str, file: Path) -> None:
     _copy(bundle_file, target_file)
 
 
+# TODO Adapt to new argument scheme
+# TODO Automatically recognize directories and do rmdir
+# TODO Add option -f (don't ask)
+# TODO Add option -r (delete recursively)
 @cli.command()
 def rm(bundle: str, file: Path) -> None:
     """Remove FILE in the bundle and it associated link."""
@@ -201,20 +178,13 @@ def rm(bundle: str, file: Path) -> None:
     bundle_file.unlink()
 
 
-@cli.command()
-def rmdir(bundle: str) -> None:
-    """Remove BUNDLE and its contents."""
-    assert_bundle_arg(bundle)
-    bundle_dir = get_bundle(bundle)
-    shutil.rmtree(str(bundle_dir))
-
-
+# TODO Adapt to new argument scheme
 # TODO Write tests
 @cli.command()
 def destroy() -> None:
     """Delete all bundles."""
     repo_dir = get_repo()
-    bundles = get_bundles()
+    bundles = [f"{file.name}" for file in repo_dir.glob('*') if file.is_dir()]
     n = len(bundles)
     if bundles and _ask(f"Delete all {n} bundles?", "n"):
         shutil.rmtree(str(repo_dir))
@@ -222,13 +192,7 @@ def destroy() -> None:
         print("No bundles to delete")
 
 
-# TODO Write tests
-@cli.command()
-def path() -> None:
-    """Print the path to the bundle repositor."""
-    print(get_repo())
-
-
+# TODO Adapt to new argument scheme
 @cli.command()
 def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE, not descending into directories.
