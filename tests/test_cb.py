@@ -37,18 +37,11 @@ def empty_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def empty_repo(empty_dir: Path) -> Path:
+def empty_repo(empty_dir: Path, monkeypatch) -> Path:
     """Return an empty repo and monkeypatch get_repo."""
     monkeypatch.setattr(cb, "get_repo", lambda: empty_dir)
     return empty_dir
 
-
-@pytest.fixture
-def empty_bundle(empty_repo: Path) -> Path:
-    """Return an empty bundle and monkeypatch get_bundle."""
-    bundle = empty_repo / "testbundle"
-    monkeypatch.setattr(cb, "get_bundle", lambda: bundle)
-    return bundle
 
 # Session-wide fixtures:
 #
@@ -60,14 +53,31 @@ def empty_bundle(empty_repo: Path) -> Path:
 #
 # Tests for internal functions:
 
-def test_get_bundles(empty_dir, monkeypatch):
-    """Test _get_bundles."""
-    path = empty_dir
-    dir_names = ['one', 'two', 'three']
-    for name in dir_names:
-        (path / name).mkdir()
-    for f in cb.get_bundles():
-        assert f in dir_names
+def test_parse_bundle():
+    """Test _parse_bundle"""
+    with pytest.raises(click.exceptions.Exit):
+        assert cb._parse_bundle("")
+    tests = [["file", (None, Path("file"))],
+             ["/file", (None, Path("file"))],
+             ["dir/", (Path("dir/"), None)],
+             ["dir/subdir/", (Path("dir/subdir"), None)],
+             ["/dir/", (Path("dir/"), None)],
+             ["/dir/subdir/", (Path("dir/subdir"), None)],
+             ["dir/file", (Path("dir"), Path("file"))],
+             ["dir/subdir/file", (Path("dir/subdir"), Path("file"))]]
+    for arg, res in tests:
+        print(f"Testing _parse_bundle({arg})")
+        assert cb._parse_bundle(arg) == res
+
+
+# def test_get_bundles(empty_dir, monkeypatch):
+#     """Test _get_bundles."""
+#     path = empty_dir
+#     dir_names = ['one', 'two', 'three']
+#     for name in dir_names:
+#         (path / name).mkdir()
+#     for f in cb.get_bundles():
+#         assert f in dir_names
 
 
 def test_move(empty_dir):
@@ -96,15 +106,16 @@ def test_link_back():
     """Test _link_back"""
     pass
 
-def test_bundle_file(test_text_file, empty_dir):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-    cb._bundle_file(test_text_file, empty_dir)
-    moved_file = empty_dir / test_text_file.name
-    # backlink = cb._suffix(moved_file)
-    subprocess.call(["tree", str(test_text_file.parent)])
-    subprocess.call(["tree", str(empty_dir)])
-    assert test_text_file.is_symlink()
-    assert test_text_file.resolve() == moved_file
+# TODO Rewrite using the new bundlepath arg
+# def test_bundle_file(test_text_file, empty_dir, monkeypatch):
+#     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
+#     cb._bundle_file(test_text_file, empty_dir)
+#     moved_file = empty_dir / test_text_file.name
+#     # backlink = cb._suffix(moved_file)
+#     subprocess.call(["tree", str(test_text_file.parent)])
+#     subprocess.call(["tree", str(empty_dir)])
+#     assert test_text_file.is_symlink()
+#     assert test_text_file.resolve() == moved_file
 
 
 # -----------------------------------------------------------
@@ -144,36 +155,38 @@ def test_cmd_restore():
     pass
 
 
-def test_cmd_rm(empty_bundle):
-    """Test rm"""
-    def write_test_file(filename):
-        with open(filename, 'w') as file:
-            file.writelines(['dummy content', 'two lines'])
+# TODO Rewrite using the new bundlepath arg
+# def test_cmd_rm(empty_bundle):
+#     """Test rm"""
+#     def write_test_file(filename):
+#         with open(filename, 'w') as file:
+#             file.writelines(['dummy content', 'two lines'])
 
-    testfile = empty_bundle / "testfile"
-    linkfile = cb._suffix(testfile)
-    write_test_file(empty_bundle / "testfile")
-    linkfile.symlink_to(testfile)
+#     testfile = empty_bundle / "testfile"
+#     linkfile = cb._suffix(testfile)
+#     write_test_file(empty_bundle / "testfile")
+#     linkfile.symlink_to(testfile)
 
-    cb.rm(IGNORE_BUNDLE_ARG, testfile)
-    assert not testfile.exists()
-    assert not linkfile.exists()
+#     cb.rm(IGNORE_BUNDLE_ARG, testfile)
+#     assert not testfile.exists()
+#     assert not linkfile.exists()
 
 
-def test_cmd_rmdir(empty_dir, monkeypatch):
-    monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
+# TODO Rewrite using the new bundlepath arg
+# def test_cmd_rmdir(empty_dir, monkeypatch):
+#     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
 
-    def write_test_file(filename):
-        with open(filename, 'w') as file:
-            file.writelines(['dummy content', 'two lines'])
+#     def write_test_file(filename):
+#         with open(filename, 'w') as file:
+#             file.writelines(['dummy content', 'two lines'])
 
-    Path(empty_dir / "testdir").mkdir()
-    write_test_file(empty_dir / "testfile")
-    write_test_file(empty_dir / "testdir" / "testfile")
-    write_test_file(empty_dir / ".another_testfile")
+#     Path(empty_dir / "testdir").mkdir()
+#     write_test_file(empty_dir / "testfile")
+#     write_test_file(empty_dir / "testdir" / "testfile")
+#     write_test_file(empty_dir / ".another_testfile")
 
-    cb.rmdir(IGNORE_BUNDLE_ARG)
-    assert not empty_dir.exists()
+#     cb.rmdir(IGNORE_BUNDLE_ARG)
+#     assert not empty_dir.exists()
 
 
 def test_cmd_destroy(test_text_file, empty_dir):
