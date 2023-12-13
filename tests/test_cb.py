@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 import pytest
+import os
 import click
 import subprocess
 import sys
@@ -112,16 +113,17 @@ def test_link_back():
     """Test _link_back"""
     pass
 
-# TODO Rewrite using the new bundlepath arg
-# def test_bundle_file(test_text_file, empty_dir, monkeypatch):
-#     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
-#     cb._bundle_file(test_text_file, empty_dir)
-#     moved_file = empty_dir / test_text_file.name
-#     # backlink = cb._suffix(moved_file)
-#     subprocess.call(["tree", str(test_text_file.parent)])
-#     subprocess.call(["tree", str(empty_dir)])
-#     assert test_text_file.is_symlink()
-#     assert test_text_file.resolve() == moved_file
+def test_bundle_file(test_text_file, empty_dir):
+    assert not test_text_file.is_symlink()
+    cb._bundle_file(test_text_file, empty_dir)
+    subprocess.call(["tree", str(test_text_file.parent)])
+    subprocess.call(["tree", str(empty_dir)])
+    bundled_file = empty_dir / test_text_file.name
+    bundled_backlink = cb._suffix(bundled_file)
+    assert bundled_backlink.is_symlink()
+    assert os.path.samefile(bundled_backlink, test_text_file)
+    assert test_text_file.is_symlink()
+    assert test_text_file.resolve() == bundled_file
 
 
 # -----------------------------------------------------------
