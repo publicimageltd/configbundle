@@ -59,7 +59,30 @@ def assert_path(p: Path,
             print(msg.format(p=p))
         if cancel:
             raise typer.Exit(1)
-    return result    
+    return result
+
+def _parse_bundle(bundle: str) -> tuple[Path | None, Path | None]:
+    """Parse BUNDLE, returning a full directory and a full file path.
+    If BUNDLE has no slash, treat it as a file specification.
+    If BUNDLE ends with a trailing slash, treat it as a directory specification.
+    If BUNDLE has one or several slashes, treat the last part as a file specification
+    and the rest as a path of directories.
+    Ignore slash at the beginning. Return None for a missing dir or file specification.
+    """
+    # Some sanity checks:
+    bundle = re.sub("/{2,}", "/", bundle)
+    bundle = bundle.lstrip("/")
+    if bundle == "" or bundle.isspace():
+        print("Bundle specification cannot be empty")
+        raise typer.Exit(1)
+    # Split:
+    _dir: Path | None
+    _file: Path | None
+    if bundle.endswith("/"):
+        _dir, _file = Path(bundle), None
+    else:
+        _dir, _, _file = [Path(x) if x != '' else None for x in bundle.rpartition("/")]
+    return _dir, _file
 
 
 def _ignore(file: Path) -> bool:
