@@ -158,15 +158,22 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 
 
 # -----------------------------------------------------------
-# TODO Adapt to new argument scheme
 @cli.command()
-def add(file: Path, bundle: BundleDir) -> None:
-    "Add FILE to BUNDLE, replacing it with a link to the bundled file."
-    # HEREAMI 
-    assert_bundle_arg(bundle)
+def add(file: Path, bundle_dir: str) -> None:
+    "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
-    bundle_dir = get_bundle(bundle)
-    _bundle_file(file, bundle_dir)
+    _repo = get_repo()
+    _dir, _ = _parse_bundle(bundle_dir, True)
+    # FIXME Currently BUNDLE_DIR is not optional, but
+    #       it could be a useful feature to add. This
+    #       would have to be intercepted before the call
+    #       to _parse_bundle
+    if _dir is None:
+        _dir = _repo
+    else:
+        _dir = _repo / _dir
+    _dir.mkdir(parents=True, exist_ok=True)
+    _bundle_file(file, _dir)
 
 
 # TODO Adapt to new argument scheme

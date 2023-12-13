@@ -132,9 +132,13 @@ def test_bundle_file(test_text_file, empty_dir):
 def test_cmd_init():
     pass
 
-
-def test_cmd_add():
-    pass
+def test_cmd_add(test_text_file, empty_repo):
+    cb.add(test_text_file, "dir")
+    repo = cb.get_repo()
+    _dir = repo / "dir"
+    _repo_file = _dir / test_text_file.name
+    assert _dir.exists()
+    assert _repo_file.exists()
 
 
 def test_cmd_copy(empty_dir):
