@@ -57,17 +57,23 @@ def test_parse_bundle():
     """Test _parse_bundle"""
     with pytest.raises(click.exceptions.Exit):
         assert cb._parse_bundle("")
-    tests = [["file", (None, Path("file"))],
-             ["/file", (None, Path("file"))],
-             ["dir/", (Path("dir/"), None)],
-             ["dir/subdir/", (Path("dir/subdir"), None)],
-             ["/dir/", (Path("dir/"), None)],
-             ["/dir/subdir/", (Path("dir/subdir"), None)],
-             ["dir/file", (Path("dir"), Path("file"))],
-             ["dir/subdir/file", (Path("dir/subdir"), Path("file"))]]
-    for arg, res in tests:
-        print(f"Testing _parse_bundle({arg})")
-        assert cb._parse_bundle(arg) == res
+        assert cb._parse_bundle("/")
+        assert cb._parse_bundle("", True)
+        assert cb._parse_bundle("/", True)
+    tests = [["file", False, (None, Path("file"))],
+             ["/file", False, (None, Path("file"))],
+             ["dir/", False, (Path("dir/"), None)],
+             ["dir/subdir/", False, (Path("dir/subdir"), None)],
+             ["/dir/", False, (Path("dir/"), None)],
+             ["/dir/subdir/", False, (Path("dir/subdir"), None)],
+             ["dir/file", False, (Path("dir"), Path("file"))],
+             ["dir/subdir/file", False, (Path("dir/subdir"), Path("file"))],
+             ["dir", True, (Path("dir"), None)],
+             ["dir/subdir", True, (Path("dir/subdir"), None)],
+             ["dir/subdir/subsubdir", True, (Path("dir/subdir/subsubdir"), None)]]
+    for arg, dir_only, res in tests:
+        print(f"Testing _parse_bundle({arg}{dir_only})")
+        assert cb._parse_bundle(arg, dir_only) == res
 
 
 # def test_get_bundles(empty_dir, monkeypatch):

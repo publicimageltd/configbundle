@@ -61,13 +61,30 @@ def assert_path(p: Path,
             raise typer.Exit(1)
     return result
 
-def _parse_bundle(bundle: str) -> tuple[Path | None, Path | None]:
-    """Parse BUNDLE, returning a full directory and a full file path.
-    If BUNDLE has no slash, treat it as a file specification.
-    If BUNDLE ends with a trailing slash, treat it as a directory specification.
-    If BUNDLE has one or several slashes, treat the last part as a file specification
-    and the rest as a path of directories.
-    Ignore slash at the beginning. Return None for a missing dir or file specification.
+def _parse_bundle(bundle: str, dir_only: bool = False) -> tuple[Path | None, Path | None]:
+    """Parse BUNDLE, returning a directory and a file path.
+
+    If DIR_ONLY is true, treat it unconditionally as a directory specification:
+
+          'dir/subdir/further_subdir'
+
+    Else split the path into a file and a directory part, using the last slash
+    as separator:
+
+          'dir/subdir/file'
+
+    If the string contains no slash, treat the complete string as a file specification:
+
+         'file'
+
+    A trailing slash will turn the last part of the string into a directory name:
+
+         'dir/subdir/'
+
+    For that reason, the function might not return a value for the file even if
+    DIR_ONLY is set to False.
+
+    Always ignore slash at the beginning. Return None for a missing dir or file specification.
     """
     # Some sanity checks:
     bundle = re.sub("/{2,}", "/", bundle)
@@ -78,7 +95,7 @@ def _parse_bundle(bundle: str) -> tuple[Path | None, Path | None]:
     # Split:
     _dir: Path | None
     _file: Path | None
-    if bundle.endswith("/"):
+    if bundle.endswith("/") or dir_only:
         _dir, _file = Path(bundle), None
     else:
         _dir, _, _file = [Path(x) if x != '' else None for x in bundle.rpartition("/")]
