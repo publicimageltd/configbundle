@@ -35,6 +35,16 @@ def _has_parents(path: Path) -> bool:
     return (path.parent == Path('.'))
 
 
+def _short_bundle_name(path: Path, root: Path | None = None) -> str:
+    """Return path as a path relative to ROOT, if possible."""
+    if not root:
+        _root = get_repo()
+    _res = path
+    if path.is_relative_to(_root):
+        _res = path.relative_to(_root)
+    return f"{_res}"
+
+
 def assert_path(p: Path,
                 assertion: Callable[[Path], bool] = Path.exists,
                 msg: str | None = '{p} does not exist',
@@ -146,8 +156,8 @@ def add(file: Path,
         print("File is already bundled")
         raise typer.Exit(1)
     if file.is_symlink() and file.resolve().is_relative_to(_repo):
-        _bundled_file = file.resolve().relative_to(_repo)
-        print(f"File is already bundled in {_bundled_file}")
+        _bundled_path_name = _short_bundle_name(file.resolve())
+        print(f"File is already bundled in {_bundled_path_name}")
         raise typer.Exit(1)
     _dir.mkdir(parents=True, exist_ok=True)
     _bundle_file(file, _dir)
@@ -165,6 +175,7 @@ def copy(bundle_file: str, target_file: Path) -> None:
     _copy(_bundled_file, target_file)
 
 
+# TODO Test manually output of --as-link (shortened path)
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
@@ -180,6 +191,7 @@ def restore(bundle_file: str,
     # FIXME That does not handle multiple chained links properly
     # A more stable solution would be to iterate over readlink
     # until the bundle target has been reached, and use result n-1
+    # See also RM which uses .readlink(), too
     _target_file = _backlink.readlink()
 
     # Prepare target:
@@ -193,32 +205,65 @@ def restore(bundle_file: str,
     # Copy the target file or create a link to the bundled file:
     if as_link:
         _target_file.symlink_to(_bundled_file.absolute())
-        _relative_file_name = _bundled_file.relative_to(get_repo())
-        _action_name = f"{_target_file} linking to {_relative_file_name}"
+        _shortened_file_name = _short_bundle_name(_bundled_file)
+        _action_name = f"{_target_file} linking to {_shortened_file_name}"
     else:
         _copy(_bundled_file, _target_file)
         _action_name = f"{_target_file}"
     print(f"Restoring {_action_name}")
 
 
-# TODO Adapt to new argument scheme
-# TODO Automatically recognize directories and do rmdir
-# TODO Add option -f (don't ask)
-# TODO Add option -r (delete recursively)
+# TODO Write automated test
+# TODO Test manually output of confirmation message (shortened file)
 @cli.command()
-def rm(bundle: str, file: Path) -> None:
-    """Remove FILE in the bundle and it associated link."""
-    pass
-    # assert_bundle_arg(bundle)
-    # bundle_file = get_bundle(bundle) / file
-    # assert_path(bundle_file)
-    # link_file = _suffix(bundle_file)
-    # if link_file.exists():
-    #     link_file.unlink()
-    # bundle_file.unlink()
+def rm(bundle_file: str,
+       force: Annotated[Optional[bool],
+                        typer.Option(help="Do not ask for confirmation")] = False) -> None:
+    """Remove BUNDLE_FILE and its associated link."""
+    _bundle_file = get_repo() / _parse_bundle_file(bundle_file)
+    assert_path(_bundle_file)
+    _backlink_file = _suffix(_bundle_file)
+    if not force:
+        _shortened_file_name = _short_bundle_name(_bundle_file)
+        _linked_info = ""
+        if _backlink_file.exists():
+            _backlinked_file = _backlink_file.readlink()
+            _linked_shortname = _short_bundle_name(_backlinked_file, Path.home())
+            if _backlinked_file.exists():
+                _linked_info = f" This will break the link stored in {_linked_shortname}"
+        _backlink_action = ""
+        if _backlink_file.exists():
+            _backlink_action = " and its backlink"
+        typer.confirm(f"Delete bundled file {_shortened_file_name}{_backlink_action}?{_linked_info}",
+                      default=False, abort=True)
+    _backlink_file.unlink(missing_ok=True)
+    _bundle_file.unlink()
 
 
-# TODO Add option to not filter ignored files
+# TODO Test manually
+# TODO Write automated test
+@cli.command()
+def rmdir(bundle_dir: str,
+          force: Annotated[Optional[bool],
+                           typer.Option("--force", "-f",
+                                        help="Delete non-empty dirs")] = False,
+          recursively: Annotated[Optional[bool],
+                                 typer.Option("--recurse", "-r",
+                                              help="Recursively delete subdirectories")] = False):
+    """Delete bundle directory BUNDLE_DIR."""
+    _dir = get_repo() / _parse_bundle_dir(bundle_dir)
+    _dir_name = _short_bundle_name(_dir)
+    assert_path(_dir)
+    _contents = _dir.rglob('**')
+    if _contents and not force:
+        print(f"{_dir_name} is not empty. Use --force to delete anyways.")
+        raise typer.Exit(1)
+    _dirs = [x for x in _contents if x.is_dir()]
+    if _dirs and not force and not recursively:
+        print("f{_dir_name} contains directories. Use --recursive or --force to delete subdirectories")
+    shutil.rmtree(str(_dir))
+
+
 # TODO Write tests
 @cli.command()
 def destroy() -> None:
