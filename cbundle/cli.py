@@ -247,22 +247,26 @@ def rm(bundle: str, file: Path) -> None:
     # bundle_file.unlink()
 
 
-# TODO Adapt to new argument scheme
+# TODO Add option to not filter ignored files
 # TODO Write tests
 @cli.command()
 def destroy() -> None:
-    """Delete all bundles."""
-    repo_dir = get_repo()
-    bundles = [f"{file.name}" for file in repo_dir.glob('*') if file.is_dir()]
-    n = len(bundles)
-    if bundles and _ask(f"Delete all {n} bundles?", "n"):
-        shutil.rmtree(str(repo_dir))
+    """Delete the repository."""
+    _repo_dir = get_repo()
+    _glob = [x for x in _repo_dir.rglob('**/*') if not _ignore(x)]
+    _files = [x for x in _glob if x.is_file()]
+    _dirs = [x for x in _glob if x.is_dir()]
+    n_files = len(_files)
+    n_dirs = len(_dirs)
+    n_total = n_files + n_dirs
+    if n_total > 0 and typer.confirm(f"Deleting the repository would delete {n_files} files and {n_dirs} directories. Proceed?",
+                                     default=False, abort=True):
+        shutil.rmtree(str(_repo_dir))
     else:
-        print("No bundles to delete")
+        print("Repository is empty")
 
 
 # TODO Test manually
-# TODO Adapt to new argument scheme
 @cli.command()
 def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE_DIR.
