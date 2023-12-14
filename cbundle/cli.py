@@ -206,11 +206,14 @@ def copy(bundle_file: str, target_file: Path) -> None:
     _copy(_bundled_file, target_file)
 
 # TODO Add test
+# TODO Add test for restoring links
 # TODO Currently this restores the original file, without link.
 #      How should we call a command which restores the file AS LINK?
 #      Or add an option "--as-link"
 @cli.command()
-def restore(bundle_file: str) -> None:
+def restore(bundle_file: str,
+            as_link: Annotated[Optional[bool],
+                               typer.Option(help="Restore link to the bundled file")] = False) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
     _dir, _file = _parse_bundle(bundle_file, dir_only=False)
     if not _file:
@@ -226,8 +229,13 @@ def restore(bundle_file: str) -> None:
     _target_file = _backlink.readlink()
     if _target_file.exists():
         _target_file.unlink()
-    print(f"Restoring {_target_file} from bundle {_dir}")
-    _copy(_bundled_file, _target_file)
+    if as_link:
+        _target_file.symlink_to(_bundled_file.absolute())
+        _action = f"link to {_target_file}"
+    else:
+        _copy(_bundled_file, _target_file)
+        _action = f"{_target_file}"
+    print(f"Restoring {_action} from bundle {_dir}")
 
 
 # TODO Adapt to new argument scheme
