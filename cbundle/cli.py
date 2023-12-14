@@ -277,6 +277,7 @@ def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     else:
         _dir, _ = _parse_bundle(bundle_dir, dir_only=True) # type: ignore
         _dir = _repo / _dir
+    assert_path(_dir)
     cmd = ["tree", str(_dir)]
     if not shutil.which("tree"):
         print("Binary tree not available")
