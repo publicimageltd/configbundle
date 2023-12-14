@@ -35,14 +35,20 @@ def _has_parents(path: Path) -> bool:
     return (path.parent == Path('.'))
 
 
-def _short_bundle_name(path: Path, root: Path | None = None) -> str:
+def _rooted_name(path: Path, root: Path | None = None) -> str:
     """Return path as a path relative to ROOT, if possible."""
+    _root_str = ""
     if not root:
         _root = get_repo()
+        _root_str = "bundle path "
+    else:
+        _root = root
+        if root == Path.home():
+            _root_str = "~/"
     _res = path
     if path.is_relative_to(_root):
         _res = path.relative_to(_root)
-    return f"{_res}"
+    return f"{_root_str}{_res}"
 
 
 def assert_path(p: Path,
@@ -156,7 +162,7 @@ def add(file: Path,
         print("File is already bundled")
         raise typer.Exit(1)
     if file.is_symlink() and file.resolve().is_relative_to(_repo):
-        _bundled_path_name = _short_bundle_name(file.resolve())
+        _bundled_path_name = _rooted_name(file.resolve())
         print(f"File is already bundled in {_bundled_path_name}")
         raise typer.Exit(1)
     _dir.mkdir(parents=True, exist_ok=True)
@@ -175,7 +181,6 @@ def copy(bundle_file: str, target_file: Path) -> None:
     _copy(_bundled_file, target_file)
 
 
-# TODO Test manually output of --as-link (shortened path)
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
@@ -203,13 +208,14 @@ def restore(bundle_file: str,
             raise typer.Exit(1)
 
     # Copy the target file or create a link to the bundled file:
+    _target_file_name = _rooted_name(_target_file, Path.home())
     if as_link:
         _target_file.symlink_to(_bundled_file.absolute())
-        _shortened_file_name = _short_bundle_name(_bundled_file)
-        _action_name = f"{_target_file} linking to {_shortened_file_name}"
+        _shortened_file_name = _rooted_name(_bundled_file)
+        _action_name = f"{_target_file_name} linking to {_shortened_file_name}"
     else:
         _copy(_bundled_file, _target_file)
-        _action_name = f"{_target_file}"
+        _action_name = f"{_target_file_name}"
     print(f"Restoring {_action_name}")
 
 
@@ -224,11 +230,11 @@ def rm(bundle_file: str,
     assert_path(_bundle_file)
     _backlink_file = _suffix(_bundle_file)
     if not force:
-        _shortened_file_name = _short_bundle_name(_bundle_file)
+        _shortened_file_name = _rooted_name(_bundle_file)
         _linked_info = ""
         if _backlink_file.exists():
             _backlinked_file = _backlink_file.readlink()
-            _linked_shortname = _short_bundle_name(_backlinked_file, Path.home())
+            _linked_shortname = _rooted_name(_backlinked_file, Path.home())
             if _backlinked_file.exists():
                 _linked_info = f" This will break the link stored in {_linked_shortname}"
         _backlink_action = ""
@@ -252,7 +258,7 @@ def rmdir(bundle_dir: str,
                                               help="Recursively delete subdirectories")] = False):
     """Delete bundle directory BUNDLE_DIR."""
     _dir = get_repo() / _parse_bundle_dir(bundle_dir)
-    _dir_name = _short_bundle_name(_dir)
+    _dir_name = _rooted_name(_dir)
     assert_path(_dir)
     _contents = _dir.rglob('**')
     if _contents and not force:
