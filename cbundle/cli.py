@@ -1,5 +1,6 @@
 #!/usr/bin/python
 from pathlib import Path
+import os
 from typing import Callable, Optional
 from typing_extensions import Annotated
 import sys
@@ -13,6 +14,7 @@ import typer  # noqa: E402
 
 # TODO Make main arg in cmds path-like: bundle/file
 # TODO Rewrite Tests
+# TODO Turn assert_xx into validations using Typer
 #
 # -----------------------------------------------------------
 # Global Variables
@@ -61,6 +63,7 @@ def assert_path(p: Path,
             raise typer.Exit(1)
     return result
 
+# TODO Refactor into two fns for dir and file, with distinct return types
 def _parse_bundle(bundle: str, dir_only: bool = False) -> tuple[Path | None, Path | None]:
     """Parse BUNDLE, returning a directory and a file path.
 
@@ -132,6 +135,8 @@ def _move(file: Path, target_path: Path) -> Path:
 
 def _copy(file: Path, target_path: Path) -> Path:
     """Copy FILE, returning the destination as Path.
+    If TARGET_PATH is a directory, copy the file into this directory.
+    If TARGET_PATH is a file, use this file name as destination.
     If FILE is a symlink, create a copy of the file FILE
     is referring to."""
     target_path = target_path.absolute()
@@ -158,6 +163,8 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 
 
 # -----------------------------------------------------------
+# TODO Test manually
+# TODO Add test for already bundled file
 @cli.command()
 def add(file: Path, bundle_dir: str) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
@@ -172,41 +179,55 @@ def add(file: Path, bundle_dir: str) -> None:
         _dir = _repo
     else:
         _dir = _repo / _dir
+    if Path(_dir / file.name).exists():
+        print("File is already bundled")
+        raise typer.Exit(1)
     _dir.mkdir(parents=True, exist_ok=True)
     _bundle_file(file, _dir)
 
 
-# TODO Adapt to new argument scheme
+# TODO Add test
 @cli.command()
-def copy(bundle: str, file: Path, target_file: Path) -> None:
-    """Copy FILE in BUNDLE to TARGET_FILE.
-    FILE's path is relative to the bundle root directory."""
-    assert_bundle_arg(bundle)
-    bundle_file = get_bundle(bundle) / file
-    assert_path(bundle_file)
-    _move(bundle_file, target_file)
+def copy(bundle_file: str, target_file: Path) -> None:
+    """Copy BUNDLE_FILE to TARGET_FILE."""
+    _dir, _file = _parse_bundle(bundle_file, dir_only=False)
+    if _file is None:
+        print(f"{bundle_file} is not a valid file specification")
+        raise typer.Exit(1)
+    if target_file.exists():
+        typer.confirm(f"File {target_file} already exists, overwrite? ",
+                      default=False, abort=True)
+    _repo = get_repo()
+    if _dir is None:
+        _bundled_file = _repo / _file
+    else:
+        _bundled_file = _repo / _dir / _file
+    assert_path(_bundled_file)
+    _copy(_bundled_file, target_file)
 
-
-# TODO Adapt to new argument scheme
+# TODO Add test
 # TODO Currently this restores the original file, without link.
 #      How should we call a command which restores the file AS LINK?
 #      Or add an option "--as-link"
 @cli.command()
-def restore(bundle: str, file: Path) -> None:
-    """Copy FILE to the location defined by its associated .link file."""
-    assert_bundle_arg(bundle)
-    bundle_file = get_bundle(bundle) / file
-    link_file = _suffix(bundle_file)
-    assert_path(bundle_file)
-    assert_path(link_file)
-    # TODO That does not handle chained links properly
+def restore(bundle_file: str) -> None:
+    """Copy BUNDLE_FILE to the location defined by its associated .link file."""
+    _dir, _file = _parse_bundle(bundle_file, dir_only=False)
+    if not _file:
+        print("Invalid path to bundled file")
+        raise typer.Exit(1)
+    _bundled_file = get_repo() / _dir / _file # type: ignore
+    _backlink = _suffix(_bundled_file)
+    assert_path(_bundled_file)
+    assert_path(_backlink, os.path.lexists)
+    # FIXME That does not handle multiple chained links properly
     # A more stable solution would be to iterate over readlink
     # until the bundle target has been reached, and use result n-1
-    target_file = link_file.readlink()
-    if target_file.exists():
-        target_file.unlink()
-    print(f"Restoring {target_file} from bundle {bundle}")
-    _copy(bundle_file, target_file)
+    _target_file = _backlink.readlink()
+    if _target_file.exists():
+        _target_file.unlink()
+    print(f"Restoring {_target_file} from bundle {_dir}")
+    _copy(_bundled_file, _target_file)
 
 
 # TODO Adapt to new argument scheme
@@ -216,13 +237,14 @@ def restore(bundle: str, file: Path) -> None:
 @cli.command()
 def rm(bundle: str, file: Path) -> None:
     """Remove FILE in the bundle and it associated link."""
-    assert_bundle_arg(bundle)
-    bundle_file = get_bundle(bundle) / file
-    assert_path(bundle_file)
-    link_file = _suffix(bundle_file)
-    if link_file.exists():
-        link_file.unlink()
-    bundle_file.unlink()
+    pass
+    # assert_bundle_arg(bundle)
+    # bundle_file = get_bundle(bundle) / file
+    # assert_path(bundle_file)
+    # link_file = _suffix(bundle_file)
+    # if link_file.exists():
+    #     link_file.unlink()
+    # bundle_file.unlink()
 
 
 # TODO Adapt to new argument scheme
@@ -239,29 +261,23 @@ def destroy() -> None:
         print("No bundles to delete")
 
 
+# TODO Test manually
 # TODO Adapt to new argument scheme
 @cli.command()
-def ls(bundle: Annotated[Optional[str], typer.Argument()] = None) -> None:
-    """Display the contents of BUNDLE, not descending into directories.
-    If no bundle is given, list all bundles in the repository."""
-    if bundle is None:
-        for item in get_bundles():
-            print(item)
+def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
+    """Display the contents of BUNDLE_DIR.
+    If no bundle dir is given, list the repository root."""
+    _repo = get_repo()
+    if bundle_dir is None:
+        _dir = _repo
     else:
-        assert_bundle_arg(bundle)
-        bundle_dir = get_bundle(bundle)
-        path = bundle_dir # .relative_to(Path.cwd())
-        # TODO Replace external tree with handmade internal f()
-        cmd = [str(path)]
-        if shutil.which("tree"):
-            cmd.insert(0, "tree")
-        elif shutil.which("ls"):
-            cmd.insert(0, "ls")
-            cmd.append("-al")
-        else:
-            print("Need either ls or tree to list contents")
-            raise typer.Exit(1)
-        subprocess.call(cmd)
+        _dir, _ = _parse_bundle(bundle_dir, dir_only=True) # type: ignore
+        _dir = _repo / _dir
+    cmd = ["tree", str(_dir)]
+    if not shutil.which("tree"):
+        print("Binary tree not available")
+        raise typer.Exit(1)
+    subprocess.call(cmd)
 
 
 if __name__ == '__main__':
