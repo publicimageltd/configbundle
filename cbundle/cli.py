@@ -25,29 +25,14 @@ cli = typer.Typer(no_args_is_help=True)
 # -----------------------------------------------------------
 # Utilities
 
-# TODO Replace with typer.confirm("....")
-def _ask(prompt: str, default: str) -> bool:
-    """Prompt the user for a decision.
-    DEFAULT is the default option (one of 'y','n','yes','no')."""
-    choice = None
-    option_set = {'y', 'n', 'yes', 'no'}
-    yes_set = {'y', 'yes'}
-    default_set = {default}
-    options = [str.upper(e) if e in default_set else e
-               for e in option_set]
-    prompt += f" {options} "
-    while choice is None:
-        _input = str.lower(input(prompt) or default)
-        if _input in option_set:
-            choice = _input in yes_set
-        else:
-            print("Please pick one of the options.")
-    return choice
-
-
 def _suffix(file: Path) -> Path:
     """Return FILE with the suffix .link added."""
     return Path(f"{file}.link")
+
+
+def _has_parents(path: Path) -> bool:
+    """Check if PATH has parent directories."""
+    return (path.parent == Path('.'))
 
 
 def assert_path(p: Path,
@@ -63,46 +48,30 @@ def assert_path(p: Path,
             raise typer.Exit(1)
     return result
 
-# TODO Refactor into two fns for dir and file, with distinct return types
-def _parse_bundle(bundle: str, dir_only: bool = False) -> tuple[Path | None, Path | None]:
-    """Parse BUNDLE, returning a directory and a file path.
 
-    If DIR_ONLY is true, treat it unconditionally as a directory specification:
-
-          'dir/subdir/further_subdir'
-
-    Else split the path into a file and a directory part, using the last slash
-    as separator:
-
-          'dir/subdir/file'
-
-    If the string contains no slash, treat the complete string as a file specification:
-
-         'file'
-
-    A trailing slash will turn the last part of the string into a directory name:
-
-         'dir/subdir/'
-
-    For that reason, the function might not return a value for the file even if
-    DIR_ONLY is set to False.
-
-    Always ignore slash at the beginning. Return None for a missing dir or file specification.
-    """
-    # Some sanity checks:
-    bundle = re.sub("/{2,}", "/", bundle)
-    bundle = bundle.lstrip("/")
-    if bundle == "" or bundle.isspace():
+def _sanitize_bundle_arg(bundle_arg: str) -> str:
+    """Remove unnecessary characters in BUNDLE_ARG."""
+    _arg = re.sub("/{2,}", "/", bundle_arg)
+    _arg = _arg.lstrip("/")
+    if _arg == "" or _arg.isspace():
         print("Bundle specification cannot be empty")
         raise typer.Exit(1)
-    # Split:
-    _dir: Path | None
-    _file: Path | None
-    if bundle.endswith("/") or dir_only:
-        _dir, _file = Path(bundle), None
-    else:
-        _dir, _, _file = [Path(x) if x != '' else None for x in bundle.rpartition("/")]
-    return _dir, _file
+    return _arg
+
+
+def _parse_bundle_dir(bundle_dir: str) -> Path:
+    """Parse BUNDLE_DIR, returning a directory path."""
+    return Path(_sanitize_bundle_arg(bundle_dir))
+
+
+def _parse_bundle_file(bundle_file: str) -> Path:
+    """Parse BUNDLE_FILE, returning a file path.
+    A trailing slash will throw an error."""
+    _arg = _sanitize_bundle_arg(bundle_file)
+    if _arg.endswith("/"):
+        print("Bundle path must be a file specification")
+        raise typer.Exit(1)
+    return Path(_arg)
 
 
 def _ignore(file: Path) -> bool:
@@ -163,9 +132,6 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 
 
 # -----------------------------------------------------------
-# TODO Test manually
-# TODO Add test for already bundled file
-# TODO Add test for not passing a value to bundle_dir
 @cli.command()
 def add(file: Path,
         bundle_dir: Annotated[Optional[str],
@@ -173,54 +139,41 @@ def add(file: Path,
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
     _repo = get_repo()
-    _dir = None
+    _dir = _repo
     if bundle_dir:
-        _dir, _ = _parse_bundle(bundle_dir, True)
-    if _dir is None:
-        _dir = _repo
-    else:
-        _dir = _repo / _dir
+        _dir = _dir / _parse_bundle_dir(bundle_dir)
     if Path(_dir / file.name).exists():
         print("File is already bundled")
+        raise typer.Exit(1)
+    if file.is_symlink() and file.resolve().is_relative_to(_repo):
+        _bundled_file = file.resolve().relative_to(_repo)
+        print(f"File is already bundled in {_bundled_file}")
         raise typer.Exit(1)
     _dir.mkdir(parents=True, exist_ok=True)
     _bundle_file(file, _dir)
 
 
-# TODO Add test
 @cli.command()
 def copy(bundle_file: str, target_file: Path) -> None:
     """Copy BUNDLE_FILE to TARGET_FILE."""
-    _dir, _file = _parse_bundle(bundle_file, dir_only=False)
-    if _file is None:
-        print(f"{bundle_file} is not a valid file specification")
-        raise typer.Exit(1)
+    _file = _parse_bundle_file(bundle_file)
     if target_file.exists():
         typer.confirm(f"File {target_file} already exists, overwrite? ",
                       default=False, abort=True)
-    _repo = get_repo()
-    if _dir is None:
-        _bundled_file = _repo / _file
-    else:
-        _bundled_file = _repo / _dir / _file
+    _bundled_file = get_repo() / _file
     assert_path(_bundled_file)
     _copy(_bundled_file, target_file)
 
-# TODO Add test
-# TODO Add test for restoring links
-# TODO Currently this restores the original file, without link.
-#      How should we call a command which restores the file AS LINK?
-#      Or add an option "--as-link"
+
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
-                               typer.Option(help="Restore link to the bundled file")] = False) -> None:
+                               typer.Option(help="Restore link to the bundled file")] = False,
+            overwrite: Annotated[Optional[bool],
+                                 typer.Option(help="Overwrite existing target file")] = True) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
-    _dir, _file = _parse_bundle(bundle_file, dir_only=False)
-    if not _file:
-        print("Invalid path to bundled file")
-        raise typer.Exit(1)
-    _bundled_file = get_repo() / _dir / _file # type: ignore
+    _file = _parse_bundle_file(bundle_file)
+    _bundled_file = get_repo() / _file
     _backlink = _suffix(_bundled_file)
     assert_path(_bundled_file)
     assert_path(_backlink, os.path.lexists)
@@ -228,15 +181,24 @@ def restore(bundle_file: str,
     # A more stable solution would be to iterate over readlink
     # until the bundle target has been reached, and use result n-1
     _target_file = _backlink.readlink()
+
+    # Prepare target:
     if _target_file.exists():
-        _target_file.unlink()
+        if overwrite:
+            _target_file.unlink()
+        else:
+            print(f"Target file {_target_file} already exists")
+            raise typer.Exit(1)
+
+    # Copy the target file or create a link to the bundled file:
     if as_link:
         _target_file.symlink_to(_bundled_file.absolute())
-        _action = f"link to {_target_file}"
+        _relative_file_name = _bundled_file.relative_to(get_repo())
+        _action_name = f"{_target_file} linking to {_relative_file_name}"
     else:
         _copy(_bundled_file, _target_file)
-        _action = f"{_target_file}"
-    print(f"Restoring {_action} from bundle {_dir}")
+        _action_name = f"{_target_file}"
+    print(f"Restoring {_action_name}")
 
 
 # TODO Adapt to new argument scheme
@@ -284,9 +246,11 @@ def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     if bundle_dir is None:
         _dir = _repo
     else:
-        _dir, _ = _parse_bundle(bundle_dir, dir_only=True) # type: ignore
-        _dir = _repo / _dir
+        _dir = _repo / _parse_bundle_dir(bundle_dir)
     assert_path(_dir)
+    if not _dir.is_dir():
+        print(f"{_dir} is not a directory")
+        raise typer.Exit(1)
     cmd = ["tree", str(_dir)]
     if not shutil.which("tree"):
         print("Binary tree not available")

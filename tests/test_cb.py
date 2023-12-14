@@ -9,9 +9,18 @@ from cbundle import cli as cb  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # -----------------------------------------------------------
-# Global Variables and Constants
+# Utilities
 
-IGNORE_BUNDLE_ARG = 'ignore_this_arg'
+def _add_if_not_none(p: Path | str,
+                     q: Path | str | None) -> Path:
+    """Return p/q if q is not None, else p."""
+    _res: Path
+    if q:
+        _res = Path(p) / Path(q)
+    else:
+        _res = Path(p)
+    return _res
+
 
 # -----------------------------------------------------------
 # FIXTURES
@@ -44,6 +53,13 @@ def empty_repo(empty_dir: Path, monkeypatch) -> Path:
     return empty_dir
 
 
+@pytest.fixture(params=["bundledir",
+                        "bundledir/"
+                        "bundledir/subdir",
+                        None])
+def req_bundledir_strings(request):
+    return request.param
+
 # Session-wide fixtures:
 #
 # NONE
@@ -54,37 +70,27 @@ def empty_repo(empty_dir: Path, monkeypatch) -> Path:
 #
 # Tests for internal functions:
 
-def test_parse_bundle():
-    """Test _parse_bundle"""
+def test_sanitize_bundle_arg():
+    """Test _sanitize_bundle_arg"""
     with pytest.raises(click.exceptions.Exit):
-        assert cb._parse_bundle("")
-        assert cb._parse_bundle("/")
-        assert cb._parse_bundle("", True)
-        assert cb._parse_bundle("/", True)
-    tests = [["file", False, (None, Path("file"))],
-             ["/file", False, (None, Path("file"))],
-             ["dir/", False, (Path("dir/"), None)],
-             ["dir/subdir/", False, (Path("dir/subdir"), None)],
-             ["/dir/", False, (Path("dir/"), None)],
-             ["/dir/subdir/", False, (Path("dir/subdir"), None)],
-             ["dir/file", False, (Path("dir"), Path("file"))],
-             ["dir/subdir/file", False, (Path("dir/subdir"), Path("file"))],
-             ["dir", True, (Path("dir"), None)],
-             ["dir/subdir", True, (Path("dir/subdir"), None)],
-             ["dir/subdir/subsubdir", True, (Path("dir/subdir/subsubdir"), None)]]
-    for arg, dir_only, res in tests:
-        print(f"Testing _parse_bundle({arg}{dir_only})")
-        assert cb._parse_bundle(arg, dir_only) == res
+        assert cb._sanitize_bundle_arg("")
+        assert cb._sanitize_bundle_arg("/")
+        assert cb._sanitize_bundle_arg("")
+        assert cb._sanitize_bundle_arg("/")
+    assert cb._sanitize_bundle_arg("/file") == "file"
+    assert cb._sanitize_bundle_arg("/dir/file") == "dir/file"
+    assert cb._sanitize_bundle_arg("dir///file") == "dir/file"
+    assert cb._sanitize_bundle_arg("dir/") == "dir/"
+    assert cb._sanitize_bundle_arg("/dir/") == "dir/"
 
 
-# def test_get_bundles(empty_dir, monkeypatch):
-#     """Test _get_bundles."""
-#     path = empty_dir
-#     dir_names = ['one', 'two', 'three']
-#     for name in dir_names:
-#         (path / name).mkdir()
-#     for f in cb.get_bundles():
-#         assert f in dir_names
+# Note _parse_bundle_dir is just wrapping Path(), no need for a test
+
+def test_parse_bundle_file():
+    """Test _parse_bundle_file"""
+    # NOTE test only what is not already covered by test_sanitize_bundle_arg
+    with pytest.raises(click.exceptions.Exit):
+        assert cb._parse_bundle_file("dir/")
 
 
 def test_move(empty_dir):
@@ -129,16 +135,18 @@ def test_bundle_file(test_text_file, empty_dir):
 # -----------------------------------------------------------
 # Test CMDs:
 
-def test_cmd_init():
-    pass
-
-def test_cmd_add(test_text_file, empty_repo):
-    cb.add(test_text_file, "dir")
-    repo = cb.get_repo()
-    _dir = repo / "dir"
+def test_cmd_add(test_text_file,
+                 empty_repo,
+                 req_bundledir_strings):
+    """Test add"""
+    _bundle_str = req_bundledir_strings
+    cb.add(test_text_file, _bundle_str)
+    _dir = _add_if_not_none(cb.get_repo(), _bundle_str)
     _repo_file = _dir / test_text_file.name
     assert _dir.exists()
     assert _repo_file.exists()
+    with pytest.raises(click.exceptions.Exit):
+        cb.add(test_text_file, _bundle_str)
 
 
 def test_cmd_copy(empty_dir):
@@ -163,8 +171,32 @@ def test_cmd_copy(empty_dir):
     assert Path(dest_file / src_file).exists()
 
 
-def test_cmd_restore():
-    pass
+def test_cmd_restore_as_file(test_text_file, empty_repo,
+                             req_bundledir_strings):
+    """Test restoring bundled link as a file."""
+    _bundle_str = req_bundledir_strings
+    _bundle_dir = _add_if_not_none(cb.get_repo(), _bundle_str)
+    _bundle_dir.mkdir(parents=True, exist_ok=True)
+    cb._bundle_file(test_text_file, _bundle_dir)
+    test_text_file.unlink()
+    # Test restoring the bundled file at its original location
+    assert not test_text_file.exists()
+    if _bundle_str:
+        _tmp = Path(_bundle_str) / test_text_file.name # 
+    else:
+        _tmp = test_text_file.name
+    _bundle_file_arg = f"{_tmp}"
+    _bundle_file = _bundle_dir / test_text_file.name
+    cb.restore(_bundle_file_arg)
+    assert test_text_file.exists()
+    # Test --no-overwrite
+    with pytest.raises(click.exceptions.Exit):
+        cb.restore(_bundle_file_arg, overwrite=False)
+    # Test --as-link
+    assert not test_text_file.is_symlink()
+    cb.restore(_bundle_file_arg, as_link=True)
+    assert test_text_file.is_symlink()
+    assert os.path.samefile(test_text_file, _bundle_file)
 
 
 # TODO Rewrite using the new bundlepath arg
