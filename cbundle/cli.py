@@ -165,16 +165,17 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
 # -----------------------------------------------------------
 # TODO Test manually
 # TODO Add test for already bundled file
+# TODO Add test for not passing a value to bundle_dir
 @cli.command()
-def add(file: Path, bundle_dir: str) -> None:
+def add(file: Path,
+        bundle_dir: Annotated[Optional[str],
+                              typer.Argument(help="Relative path to bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
     _repo = get_repo()
-    _dir, _ = _parse_bundle(bundle_dir, True)
-    # FIXME Currently BUNDLE_DIR is not optional, but
-    #       it could be a useful feature to add. This
-    #       would have to be intercepted before the call
-    #       to _parse_bundle
+    _dir = None
+    if bundle_dir:
+        _dir, _ = _parse_bundle(bundle_dir, True)
     if _dir is None:
         _dir = _repo
     else:
@@ -274,7 +275,7 @@ def destroy() -> None:
         print("Repository is empty")
 
 
-# TODO Test manually
+# TODO Implement tree instead of calling external binary
 @cli.command()
 def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE_DIR.
