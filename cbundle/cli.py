@@ -347,7 +347,7 @@ def unbundle(bundle_file_or_dir: str) -> None:
 
     _delete_dirs = []
     for _root, _dirs, _files in os.walk(str(_bundle_dir)):
-        print(f"Unbundling files in {_root}")
+        print(f"Looking for bundled files in {_root}")
         if _root != str(_bundle_dir):
             _delete_dirs.append(_root)
 
