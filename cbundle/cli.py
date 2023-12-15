@@ -1,6 +1,5 @@
 #!/usr/bin/python
 from pathlib import Path
-from itertools import filterfalse
 import os
 import errno
 from typing import Callable, Optional
@@ -344,7 +343,7 @@ def unbundle(bundle_file_or_dir: str) -> None:
                       default=False, abort=True)
 
     def _filter(f):
-        return _ignore(f) or _is_suffixed(f)
+        return not (_ignore(f) or _is_suffixed(f))
 
     _delete_dirs = []
     for _root, _dirs, _files in os.walk(str(_bundle_dir)):
@@ -352,7 +351,7 @@ def unbundle(bundle_file_or_dir: str) -> None:
         if _root != str(_bundle_dir):
             _delete_dirs.append(_root)
 
-        for _file in filterfalse(_filter, map(Path, _files)):
+        for _file in filter(_filter, map(Path, _files)):
             try:
                 _restore_copy(_file, True)
             except NoBacklinkError:
