@@ -1,6 +1,8 @@
 #!/usr/bin/python
 from pathlib import Path
+from itertools import filterfalse
 import os
+import errno
 from typing import Callable, Optional
 from typing_extensions import Annotated
 import sys
@@ -22,12 +24,41 @@ import typer  # noqa: E402
 APP_NAME = 'configbundle'
 cli = typer.Typer(no_args_is_help=True)
 
+# Custom Exceptions:
+
+
+class NoBacklinkError(FileNotFoundError):
+    """No associated backlink file found."""
+    # __init__ mit (errno, message, filename)
+
+
+class InvalidBundleSpecification(Exception):
+    """Bundle Specification is invalid (empty or otherwise flawed)."""
+
+
+# TODO Implement this error in add
+class FileAlreadyBundledError(Exception):
+    """File already exists in bundle."""
+    file: Path
+    bundle: str
+
+    def __init__(self, file, bundle, *args, **kwargs):
+        self.file = file
+        self.bundle = bundle
+        super().__init__(*args, **kwargs)
+
+
 # -----------------------------------------------------------
 # Utilities
 
 def _suffix(file: Path) -> Path:
     """Return FILE with the suffix .link added."""
     return Path(f"{file}.link")
+
+
+def _is_suffixed(file: Path) -> bool:
+    """Check if FILE has the suffix .link"""
+    return Path.suffix == ".link"
 
 
 def _has_parents(path: Path) -> bool:
@@ -143,11 +174,54 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
        Additionally create a backlink in the bundle dir."""
     bundled_file = _move(file, bundle_dir)
     _link_back(bundled_file, file)
-    # TODO Check relative or absolute links, what do we need?
     file.symlink_to(bundled_file)
 
 
+def _get_target(file: Path) -> Path:
+    """Get the target file associated with FILE via backlink.
+    Raise a NoBackLinkError if no backlink has been found.
+    Do not check whether the target file exists."""
+    _backlink = _suffix(file)
+    try:
+        _target_file = _backlink.readlink()
+    except FileNotFoundError as err:
+        raise NoBacklinkError(err.errno, f"File {file} has no backlink file", err.filename)
+    return _target_file
+
+
+def _restore_copy(bundled_file: Path, overwrite: bool) -> Path:
+    """Copy BUNDLED_FILE into the target defined by its backlink file.
+    If OVERWRITE is True, overwrite existing files, else raise an error.
+    Return the Path to the restored file."""
+    _target_file = _get_target(bundled_file)
+    if not overwrite and _target_file.exists():
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
+    _copy(bundled_file, _target_file) # _copy replaces the target
+    return _target_file
+
+
+def _restore_as_link(bundled_file: Path, overwrite: bool) -> Path:
+    """Create a link to BUNDLED_FILE at the target defined by its backlink file.
+    If OVERWRITE is True, overwrite existing files, else raise an error.
+    Return the Path to the link file."""
+    _target_file = _get_target(bundled_file)
+    if not overwrite and _target_file.exists():
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
+    _target_file.unlink(missing_ok=True)
+    _target_file.symlink_to(bundled_file.absolute())
+    return _target_file
+
+
+def _remove_bundle_and_backlink(bundled_file: Path) -> None:
+    """Remove the bundle and its backlink file.
+    Do not raise an error if no backlink file is found."""
+    _backlink = _suffix(bundled_file)
+    bundled_file.unlink(missing_ok=True)
+    _backlink.unlink(missing_ok=True)
+
+
 # -----------------------------------------------------------
+# TODO CLI allow to add multiple files by using multiple arguments
 @cli.command()
 def add(file: Path,
         bundle_dir: Annotated[Optional[str],
@@ -188,35 +262,21 @@ def restore(bundle_file: str,
             overwrite: Annotated[Optional[bool],
                                  typer.Option(help="Overwrite existing target file")] = True) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
-    _file = _parse_bundle_file(bundle_file)
-    _bundled_file = get_repo() / _file
-    _backlink = _suffix(_bundled_file)
+    _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
     assert_path(_bundled_file)
-    assert_path(_backlink, os.path.lexists)
-    # FIXME That does not handle multiple chained links properly
-    # A more stable solution would be to iterate over readlink
-    # until the bundle target has been reached, and use result n-1
-    # See also RM which uses .readlink(), too
-    _target_file = _backlink.readlink()
-
-    # Prepare target:
-    if _target_file.exists():
-        if overwrite:
-            _target_file.unlink()
+    _action_name: str
+    try:
+        if as_link:
+            # FIXME Make overwrite non-optional to get rid of type warning?
+            _target_file = _restore_as_link(_bundled_file, overwrite)
+            _action_name = f"Restored {_target_file}"
         else:
-            print(f"Target file {_target_file} already exists")
-            raise typer.Exit(1)
-
-    # Copy the target file or create a link to the bundled file:
-    _target_file_name = _rooted_name(_target_file, Path.home())
-    if as_link:
-        _target_file.symlink_to(_bundled_file.absolute())
-        _shortened_file_name = _rooted_name(_bundled_file)
-        _action_name = f"{_target_file_name} linking to {_shortened_file_name}"
-    else:
-        _copy(_bundled_file, _target_file)
-        _action_name = f"{_target_file_name}"
-    print(f"Restoring {_action_name}")
+            _target_file = _restore_copy(_bundled_file, overwrite)
+            _action_name = f"{_target_file} now links to {_bundled_file}"
+    except (NoBacklinkError, FileExistsError) as err:
+        print(err)
+        raise typer.Exit(1)
+    print(_action_name)
 
 
 # TODO Write automated test
@@ -224,7 +284,8 @@ def restore(bundle_file: str,
 @cli.command()
 def rm(bundle_file: str,
        force: Annotated[Optional[bool],
-                        typer.Option(help="Do not ask for confirmation")] = False) -> None:
+                        typer.Option("--force", "-f",
+                                     help="Do not ask for confirmation")] = False) -> None:
     """Remove BUNDLE_FILE and its associated link."""
     _bundle_file = get_repo() / _parse_bundle_file(bundle_file)
     assert_path(_bundle_file)
@@ -268,6 +329,44 @@ def rmdir(bundle_dir: str,
     if _dirs and not force and not recursively:
         print("f{_dir_name} contains directories. Use --recursive or --force to delete subdirectories")
     shutil.rmtree(str(_dir))
+
+
+# TODO Test manually
+@cli.command()
+def unbundle(bundle_file_or_dir: str,
+             as_dir: Annotated[Optional[bool],
+                               typer.Option("--dir", "-d",
+                                            help="Restore and remove a bundle dir instead")]) -> None:
+    """Restore BUNDLE_FILE_OR_DIR and delete bundled files.
+    Note: This uncondtionally replaces all backlinked files with the bundled files."""
+    if as_dir:
+        _bundle_dir = get_repo()
+        if bundle_file_or_dir:
+            _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_file_or_dir)
+            typer.confirm("Are you sure you want to unbundle the whole repository?",
+                          default=False, abort=True)
+
+        def _filter(f):
+            return _ignore(f) or _is_suffixed(f)
+
+        _delete_dirs = []
+        for _root, _dirs, _files in os.walk(str(_bundle_dir)):
+            print(f"Unbundling files in {_root}")
+            if _root != str(_bundle_dir):
+                _delete_dirs.append(_root)
+
+            for _file in filterfalse(_filter, map(Path, _files)):
+                _restore_copy(_file, True)
+
+        for _dir in _dirs:
+            print(f"Deleting {_dir} ... no just kidding")
+            # shutil.rmtree(_dir)
+
+    else:
+        _bundle_file = get_repo() / _parse_bundle_file(bundle_file_or_dir)
+        assert_path(_bundle_file)
+        _restore_copy(_bundle_file, True)
+        _remove_bundle_and_backlink(_bundle_file)
 
 
 # TODO Write tests
