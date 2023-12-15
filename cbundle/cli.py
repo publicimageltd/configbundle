@@ -333,40 +333,37 @@ def rmdir(bundle_dir: str,
 
 # TODO Test manually
 @cli.command()
-def unbundle(bundle_file_or_dir: str,
-             as_dir: Annotated[Optional[bool],
-                               typer.Option("--dir", "-d",
-                                            help="Restore and remove a bundle dir instead")]) -> None:
+def unbundle(bundle_file_or_dir: str) -> None:
     """Restore BUNDLE_FILE_OR_DIR and delete bundled files.
     Note: This uncondtionally replaces all backlinked files with the bundled files."""
-    if as_dir:
-        _bundle_dir = get_repo()
-        if bundle_file_or_dir:
-            _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_file_or_dir)
-            typer.confirm("Are you sure you want to unbundle the whole repository?",
-                          default=False, abort=True)
+    _bundle_dir = get_repo()
+    if bundle_file_or_dir:
+        _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_file_or_dir)
+        typer.confirm("Are you sure you want to unbundle the whole repository?",
+                      default=False, abort=True)
 
-        def _filter(f):
-            return _ignore(f) or _is_suffixed(f)
+    def _filter(f):
+        return _ignore(f) or _is_suffixed(f)
 
-        _delete_dirs = []
-        for _root, _dirs, _files in os.walk(str(_bundle_dir)):
-            print(f"Unbundling files in {_root}")
-            if _root != str(_bundle_dir):
-                _delete_dirs.append(_root)
+    _delete_dirs = []
+    for _root, _dirs, _files in os.walk(str(_bundle_dir)):
+        print(f"Unbundling files in {_root}")
+        if _root != str(_bundle_dir):
+            _delete_dirs.append(_root)
 
-            for _file in filterfalse(_filter, map(Path, _files)):
+        for _file in filterfalse(_filter, map(Path, _files)):
+            try:
                 _restore_copy(_file, True)
+            except NoBacklinkError:
+                print(f"No backlink found for {_file}, skipping")
+                try:
+                    _delete_dirs.remove(_root)
+                except ValueError:
+                    pass
 
-        for _dir in _dirs:
-            print(f"Deleting {_dir} ... no just kidding")
-            # shutil.rmtree(_dir)
-
-    else:
-        _bundle_file = get_repo() / _parse_bundle_file(bundle_file_or_dir)
-        assert_path(_bundle_file)
-        _restore_copy(_bundle_file, True)
-        _remove_bundle_and_backlink(_bundle_file)
+    for _dir in _delete_dirs:
+        print(f"Deleting {_dir} ... no just kidding")
+        # shutil.rmtree(_dir)
 
 
 # TODO Write tests
