@@ -339,6 +339,7 @@ def unbundle(bundle_file_or_dir: str) -> None:
     _bundle_dir = get_repo()
     if bundle_file_or_dir:
         _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_file_or_dir)
+    else:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
 
