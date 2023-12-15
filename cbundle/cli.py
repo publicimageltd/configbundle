@@ -58,7 +58,7 @@ def _suffix(file: Path) -> Path:
 
 def _is_suffixed(file: Path) -> bool:
     """Check if FILE has the suffix .link"""
-    return Path.suffix == ".link"
+    return file.suffix == ".link"
 
 
 def _has_parents(path: Path) -> bool:
