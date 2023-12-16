@@ -176,7 +176,7 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
     file.symlink_to(bundled_file)
 
 
-def _get_target(file: Path) -> Path:
+def _get_associated_target(file: Path) -> Path:
     """Get the target file associated with FILE via backlink.
     Raise a NoBackLinkError if no backlink has been found.
     Do not check whether the target file exists."""
@@ -192,7 +192,7 @@ def _restore_copy(bundled_file: Path, overwrite: bool) -> Path:
     """Copy BUNDLED_FILE into the target defined by its backlink file.
     If OVERWRITE is True, overwrite existing files, else raise an error.
     Return the Path to the restored file."""
-    _target_file = _get_target(bundled_file)
+    _target_file = _get_associated_target(bundled_file)
     if not overwrite and _target_file.exists():
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
     _copy(bundled_file, _target_file) # _copy replaces the target
@@ -203,7 +203,7 @@ def _restore_as_link(bundled_file: Path, overwrite: bool) -> Path:
     """Create a link to BUNDLED_FILE at the target defined by its backlink file.
     If OVERWRITE is True, overwrite existing files, else raise an error.
     Return the Path to the link file."""
-    _target_file = _get_target(bundled_file)
+    _target_file = _get_associated_target(bundled_file)
     if not overwrite and _target_file.exists():
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
     _target_file.unlink(missing_ok=True)
