@@ -129,11 +129,11 @@ def _ignore(file: Path) -> bool:
 
 
 def get_repo() -> Path:
-    """Return the path to the bundle repository."""
+    """Return the path to the bundle repository, possibly creating it on the fly."""
     repo_path = Path(typer.get_app_dir(APP_NAME))
     if not repo_path.exists():
-        repo_path.mkdir()
-    assert_path(repo_path, Path.is_dir, msg="{p} is not a directory")
+        repo_path.mkdir(parents=True, exist_ok=True)
+    assert_path(repo_path, Path.is_dir, msg="Error: {p} is not a directory, cannot proceed")
     return repo_path
 
 
