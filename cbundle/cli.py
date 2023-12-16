@@ -324,21 +324,14 @@ def rm(bundle_file: str,
 def rmdir(bundle_dir: str,
           force: Annotated[Optional[bool],
                            typer.Option("--force", "-f",
-                                        help="Delete non-empty dirs")] = False,
-          recursively: Annotated[Optional[bool],
-                                 typer.Option("--recurse", "-r",
-                                              help="Recursively delete subdirectories")] = False):
-    """Delete bundle directory BUNDLE_DIR."""
+                                        help="Delete non-empty dirs")] = False) -> None:
+    """Delete bundle directory BUNDLE_DIR and all of its subdirectories."""
     _dir = get_repo() / _parse_bundle_dir(bundle_dir)
     _dir_name = _rooted_name(_dir)
     assert_path(_dir)
-    _contents = _dir.rglob('**')
-    if _contents and not force:
-        print(f"{_dir_name} is not empty. Use --force to delete anyways.")
+    if _dir.glob("*") and not force:
+        print(f"{_dir_name} is not empty. Use --force to delete anyways")
         raise typer.Exit(1)
-    _dirs = [x for x in _contents if x.is_dir()]
-    if _dirs and not force and not recursively:
-        print("f{_dir_name} contains directories. Use --recursive or --force to delete subdirectories")
     shutil.rmtree(str(_dir))
 
 
