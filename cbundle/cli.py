@@ -226,7 +226,7 @@ def _remove_bundle_and_backlink(bundled_file: Path) -> None:
 @cli.command()
 def add(file: Path,
         bundle_dir: Annotated[Optional[str],
-                              typer.Argument(help="Relative path to bundle directory")] = None) -> None:
+                              typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
     _repo = get_repo()
