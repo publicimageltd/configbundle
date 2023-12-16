@@ -195,7 +195,9 @@ def _restore_copy(bundled_file: Path, overwrite: bool) -> Path:
     _target_file = _get_associated_target(bundled_file)
     if not overwrite and _target_file.exists():
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
-    _copy(bundled_file, _target_file) # _copy replaces the target
+    # Delete target to avoid symlink looping
+    _target_file.unlink(missing_ok=True)
+    _copy(bundled_file, _target_file)
     return _target_file
 
 
