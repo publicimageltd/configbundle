@@ -299,17 +299,20 @@ def rm(bundle_file: str,
     assert_path(_bundle_file)
     _backlink_file = _suffix(_bundle_file)
     if not force:
-        _shortened_file_name = _rooted_name(_bundle_file)
-        _linked_info = ""
+        # - Prepare permission for the deletion
+        _shortened_bundle_file = _rooted_name(_bundle_file)
         if _backlink_file.exists():
-            _backlinked_file = _backlink_file.readlink()
-            _linked_shortname = _rooted_name(_backlinked_file, Path.home())
-            if _backlinked_file.exists():
-                _linked_info = f" This will break the link stored in {_linked_shortname}"
-        _backlink_action = ""
-        if _backlink_file.exists():
-            _backlink_action = " and its backlink"
-        typer.confirm(f"Delete bundled file {_shortened_file_name}{_backlink_action}?{_linked_info}",
+            _shortened_bundle_file += 'and its associated backlink'
+        # - Prepare warning if backlink points to a link, which would thus be broken:
+        _broken_link_warning = ''
+        try:
+            _target_file = _get_associated_target(_bundle_file)
+        except NoBacklinkError:
+            _target_file = None
+        if _target_file and _target_file.is_symlink():
+            _shortened_target_file = _rooted_name(_target_file, Path.home())
+            _broken_link_warning = f" This will break the link stored in {_shortened_target_file}"
+        typer.confirm(f"Delete bundled file {_shortened_bundle_file}{_broken_link_warning}",
                       default=False, abort=True)
     _backlink_file.unlink(missing_ok=True)
     _bundle_file.unlink()
