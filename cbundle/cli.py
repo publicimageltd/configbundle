@@ -373,19 +373,16 @@ def unbundle(bundle_dir: Annotated[Optional[str],
 # TODO Write tests
 @cli.command()
 def destroy() -> None:
-    """Delete the repository."""
-    _repo_dir = get_repo()
-    _glob = [x for x in _repo_dir.rglob('**/*') if not _ignore(x)]
-    _files = [x for x in _glob if x.is_file()]
-    _dirs = [x for x in _glob if x.is_dir()]
-    n_files = len(_files)
-    n_dirs = len(_dirs)
-    n_total = n_files + n_dirs
-    if n_total > 0 and typer.confirm(f"Deleting the repository would delete {n_files} files and {n_dirs} directories. Proceed?",
-                                     default=False, abort=True):
-        shutil.rmtree(str(_repo_dir))
-    else:
-        print("Repository is empty")
+    """Delete the repository and its containing directory."""
+    _repo_dir = Path(typer.get_app_dir(APP_NAME))
+    if not _repo_dir.exists():
+        print("There is no repository to delete")
+        raise typer.Exit(1)
+    assert_path(_repo_dir, Path.is_dir, msg="Error: {p} is not a directory, cannot proceed")
+    # _is_empty = bool(_repo_dir.glob('*'))
+    typer.confirm(f"Delete the repository at {_repo_dir} and everything it contains?",
+                  default=False, abort=True)
+    shutil.rmtree(str(_repo_dir))
 
 
 # TODO Implement tree instead of calling external binary
