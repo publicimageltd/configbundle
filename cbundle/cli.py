@@ -331,40 +331,39 @@ def rmdir(bundle_dir: str,
 
 
 # TODO Test manually
+# TODO Deletion of subdirs if some files are skipped
 @cli.command()
-def unbundle(bundle_file_or_dir: str) -> None:
+def unbundle(bundle_dir: Annotated[Optional[str],
+                                   typer.Argument()] = None) -> None:
     """Restore BUNDLE_FILE_OR_DIR and delete bundled files.
     Note: This uncondtionally replaces all backlinked files with the bundled files."""
+    # First determine what is to be deleted
     _bundle_dir = get_repo()
-    if bundle_file_or_dir:
-        _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_file_or_dir)
+    if bundle_dir:
+        _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_dir)
     else:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
-
-    def _filter(f):
-        return not (_ignore(f) or _is_suffixed(f))
-
-    _delete_dirs = []
-    for _root, _dirs, _files in os.walk(str(_bundle_dir)):
-        print(f"Looking for bundled files in {_root}")
-        if _root != str(_bundle_dir):
-            _delete_dirs.append(_root)
-
-        for _file in filter(_filter, map(Path, _files)):
+    # Now do the deletion
+    _delete_dirs: list[str] = []
+    _repo = get_repo()
+    for _root, _dirs, _files in os.walk(str(_bundle_dir), topdown=False):
+        print("Looking for bundled files...")
+        _delete_dirs.append(_root)
+        for _file in filter(lambda f: not (_ignore(f) or _is_suffixed(f)), map(Path, _files)):
+            _src_file = Path(_root) / _file
+            _src_file_name = _rooted_name(_src_file, _repo)
             try:
-                _restore_copy(_file, True)
+                # _target_file = _restore_copy(_src_file, True)
+                _target_file = "DUMMY"
+                print(f"Restoring {_target_file} from {_src_file_name}")
             except NoBacklinkError:
-                print(f"No backlink found for {_file}, skipping")
-                try:
-                    _delete_dirs.remove(_root)
-                except ValueError:
-                    pass
-
-    for _dir in _delete_dirs:
+                print(f"{_src_file_name} WARNING: No backlink file found, skipping")
+                _delete_dirs.pop()
+    for _dir in _delete_dirs[::-1]:
         print(f"Deleting {_dir} ... no just kidding")
         # shutil.rmtree(_dir)
-
+    subprocess.call(["tree", str(_bundle_dir)])
 
 # TODO Write tests
 @cli.command()
