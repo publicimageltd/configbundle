@@ -295,18 +295,18 @@ def rm(bundle_file: str,
                         typer.Option("--force", "-f",
                                      help="Do not ask for confirmation")] = False) -> None:
     """Remove BUNDLE_FILE and its associated link."""
-    _bundle_file = get_repo() / _parse_bundle_file(bundle_file)
-    assert_path(_bundle_file)
-    _backlink_file = _suffix(_bundle_file)
+    _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
+    assert_path(_bundled_file)
+    _backlink_file = _suffix(_bundled_file)
     if not force:
         # - Prepare permission for the deletion
-        _shortened_bundle_file = _rooted_name(_bundle_file)
+        _shortened_bundle_file = _rooted_name(_bundled_file)
         if _backlink_file.exists():
             _shortened_bundle_file += 'and its associated backlink'
         # - Prepare warning if backlink points to a link, which would thus be broken:
         _broken_link_warning = ''
         try:
-            _target_file = _get_associated_target(_bundle_file)
+            _target_file = _get_associated_target(_bundled_file)
         except NoBacklinkError:
             _target_file = None
         if _target_file and _target_file.is_symlink():
@@ -315,7 +315,7 @@ def rm(bundle_file: str,
         typer.confirm(f"Delete bundled file {_shortened_bundle_file}{_broken_link_warning}",
                       default=False, abort=True)
     _backlink_file.unlink(missing_ok=True)
-    _bundle_file.unlink()
+    _bundled_file.unlink()
 
 
 # TODO Test manually
