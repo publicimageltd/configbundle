@@ -275,10 +275,10 @@ def restore(bundle_file: str,
     try:
         if as_link:
             _target_file = _restore_as_link(_bundled_file, _overwrite)
-            _action_name = f"Restored {_target_file}"
+            _action_name = f"{_target_file} now links to {_bundled_file}"
         else:
             _target_file = _restore_copy(_bundled_file, _overwrite)
-            _action_name = f"{_target_file} now links to {_bundled_file}"
+            _action_name = f"Restored {_target_file}"
     except (NoBacklinkError, FileExistsError) as err:
         print(err)
         raise typer.Exit(1)
