@@ -335,8 +335,7 @@ def rmdir(bundle_dir: str,
     shutil.rmtree(str(_dir))
 
 
-# TODO Test manually
-# TODO Deletion of subdirs if some files are skipped
+# TODO Test deletion of subdirs if some files are skipped
 @cli.command()
 def unbundle(bundle_dir: Annotated[Optional[str],
                                    typer.Argument()] = None) -> None:
@@ -359,16 +358,15 @@ def unbundle(bundle_dir: Annotated[Optional[str],
             _src_file = Path(_root) / _file
             _src_file_name = _rooted_name(_src_file, _repo)
             try:
-                # _target_file = _restore_copy(_src_file, True)
-                _target_file = "DUMMY"
+                _target_file = _restore_copy(_src_file, True)
                 print(f"Restoring {_target_file} from {_src_file_name}")
             except NoBacklinkError:
                 print(f"{_src_file_name} WARNING: No backlink file found, skipping")
                 _delete_dirs.pop()
     for _dir in _delete_dirs[::-1]:
-        print(f"Deleting {_dir} ... no just kidding")
-        # shutil.rmtree(_dir)
-    subprocess.call(["tree", str(_bundle_dir)])
+        print(f"Deleting {_dir}")
+        shutil.rmtree(_dir)
+#    subprocess.call(["tree", str(_bundle_dir)])
 
 # TODO Write tests
 @cli.command()
