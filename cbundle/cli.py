@@ -261,22 +261,29 @@ def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
                                typer.Option(help="Restore link to the bundled file")] = False,
             overwrite: Annotated[Optional[bool],
-                                 typer.Option(help="Overwrite existing target file")] = True) -> None:
+                                 typer.Option(help="Overwrite existing target file")] = True,
+            remove: Annotated[Optional[bool],
+                              typer.Option(help="Delete bundled file after restoring target")] = False) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
     _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
     assert_path(_bundled_file)
+    _overwrite = bool(overwrite) # Silence type checker
+    if remove and as_link:
+        print("Option --remove cannot be used when restoring as link")
+        raise typer.Exit(1)
     _action_name: str
     try:
         if as_link:
-            # FIXME Make overwrite non-optional to get rid of type warning?
-            _target_file = _restore_as_link(_bundled_file, overwrite)
+            _target_file = _restore_as_link(_bundled_file, _overwrite)
             _action_name = f"Restored {_target_file}"
         else:
-            _target_file = _restore_copy(_bundled_file, overwrite)
+            _target_file = _restore_copy(_bundled_file, _overwrite)
             _action_name = f"{_target_file} now links to {_bundled_file}"
     except (NoBacklinkError, FileExistsError) as err:
         print(err)
         raise typer.Exit(1)
+    if remove:
+        _remove_bundle_and_backlink(_bundled_file)
     print(_action_name)
 
 
