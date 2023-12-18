@@ -2,7 +2,10 @@
 from pathlib import Path
 import os
 import errno
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
+from operator import itemgetter
+from itertools import filterfalse
+from functools import partial
 from typing_extensions import Annotated
 import sys
 import re
@@ -131,6 +134,25 @@ def _ignore(file: Path) -> bool:
     return res
 
 
+def _relevant_files(bundle_dir: Path) -> list[Path]:
+    """Filter out ignored files in BUNDLE_DIR (recursing)."""
+    return list(filter(lambda x: not _ignore(x), bundle_dir.rglob('*')))
+
+def _files_first(pathlist: list[Path]) -> list[Path]:
+    """Sort PATHLIST with files first."""
+    return sorted(pathlist, key=lambda x: len(x.parts), reverse=True)
+
+# -----------------------------------------------------------
+# File and dir functions
+
+# TODO Test manually
+def _tree(directory):
+    print(f"{directory}:")
+    for path in sorted(directory.rglob("*")):
+        depth = len(path.relative_to(directory).parts)
+        spacer = "  " * depth
+        print(f"{spacer}+ {path.name}")
+
 def get_repo() -> Path:
     """Return the path to the bundle repository, possibly creating it on the fly."""
     repo_path = Path(typer.get_app_dir(APP_NAME))
@@ -230,62 +252,75 @@ def _restore_as_link(bundled_file: Path, overwrite: bool) -> Path:
 
 
 def _restore_dry_run(bundled_file: Path, overwrite: bool) -> Path:
-    """Only simulate restoring (copy)."""
+    """Only simulate restoring (copy).
+    Check for files, but do nothing with them."""
     _target_file = _get_associated_target(bundled_file)
     if not overwrite and _target_file.exists():
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
     return _target_file
 
-
-# TODO Write test
-def _restore_loop(bundle_dir: Path, overwrite: bool,
-                  restore_fn: Callable[[Path, bool], Path]) -> tuple[list[dict], list[dict]]:
-    """Loop over BUNDLE_DIR (an absolute path), calling RESTORE-FN on each non-suffixed file.
-    Return two list of dicts for the restored files and the failed file operations, respectively.
-    """
-    _failed: list[dict] = []
-    _restored: list[dict] = []
-    for _root, _dirs, _files in os.walk(str(bundle_dir), topdown=False):
-        for _file in filter(lambda f: not (_ignore(f) or _is_suffixed(f)), map(Path, _files)):
-            _src_file = Path(_root) / _file
-            try:
-                _target_file = restore_fn(_src_file, overwrite)
-                _restored.append({'src': Path(_src_file),
-                                  'restored': Path(_target_file)})
-            except OSError as err:
-                _failed.append({'src': Path(_src_file),
-                                # To print only parts of the standard
-                                # error msg, we can use err.strerror
-                                # and err.filename
-                                'err': err})
-    return (_restored, _failed)
+def _act_on_path(path: Path,
+                 action_fn: Callable[[Path], Path]) -> dict:
+    """Act on PATH, storing the result in a dictionary.
+    Return a dictionary {'path', 'result', 'sucess'} with the path name,
+    the result of calling ACTION_FN with the path, and a boolean
+    indicating the success."""
+    _result: Union[Path, OSError]
+    _success: bool
+    try:
+        _result = action_fn(path)
+        _success = True
+    except OSError as err:
+        _result = err
+        _success = False
+    return {'path': path,
+            'result': _result,
+            'success': _success}
 
 
-def _all_paths_except(blockfiles: list[Path], root: Path) -> list[Path]:
-    """Get all paths from ROOT except BLOCKFILES and their containing dirs."""
-    # This is actually a reduce()
-    _result = list(root.rglob('**/*'))
-    for _file in blockfiles:
-        _result = [x for x in _result if not x == _file and not x == _file.parent]
-    return _result
+def _act_on_paths(paths: list[Path],
+                  action_fn: Callable[[Path], Path]) -> list[dict]:
+    """Act on each path in PATHS for side-effects and store the results.
+    Return a list of dicts with the path name and the the result or the
+    error code, respectively. The value 'success' stores whether an error
+    occured or not."""
+    return [_act_on_path(p, action_fn) for p in paths]
 
 
-def _files_first(pathlist: list[Path]) -> list[Path]:
-    """Sort PATHLIST with files first."""
-    return sorted(pathlist, key=lambda x: len(x.parts), reverse=True)
+def _split_results(results: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split results into successful tries and failures."""
+    return (list(filter(itemgetter('success'), results)),
+            list(filterfalse(itemgetter('success'), results)))
 
 
-def _rm_bundle(bundle_dir: Path, blockerlist: list[Path]) -> None:
-    """Remove all files and dirs in BUNDLE_DIR except those on BLOCKERLIST.
-    The files in BLOCKERLIST must be at some place 'below' BUNDLE_DIR."""
-    _files = _files_first(_all_paths_except(blockerlist, bundle_dir))
-    for _file in _files:
-        try:
-            _file.unlink()
-        except IsADirectoryError:
-            # If this raises a "Directory not empty" error,
-            # something went wrong above
-            _file.rmdir()
+def _restore_dir_copy(bundle_dir: Path, overwrite: bool) -> list[dict]:
+    """Restore (copy) all files bundled in BUNDLE_DIR and subdirectories."""
+    def _restore_fn(p: Path) -> Path:
+        return _restore_copy(p, overwrite)
+    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+
+
+def _restore_dir_as_link(bundle_dir: Path, overwrite: bool) -> list[dict]:
+    """Restore (as link) all files bundled in BUNDLE_DIR and its subdirectories."""
+    def _restore_fn(p: Path) -> Path:
+        return _restore_as_link(p, overwrite)
+    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+
+
+def _restore_dir_dry_run(bundle_dir: Path, overwrite: bool) -> list[dict]:
+    """Restore (dry run) all files bundled in BUNDLE_DIR and its subdirectories."""
+    def _restore_fn(p: Path) -> Path:
+        return _restore_dry_run(p, overwrite)
+    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+
+
+def _removable(result_list: list[dict]) -> list[Path]:
+    """Return all paths with successful action which do not contain a failed path."""
+    _successes, _failures = _split_results(result_list)
+    _files = list(map(itemgetter("path"), _successes))
+    for _path in map(itemgetter("path"), _failures):
+        _files = [x for x in _files if not x == _path and not x == _path.parent]
+    return _files
 
 
 def _rm_file_and_backlink(bundled_file: Path) -> None:
@@ -326,6 +361,8 @@ def copy(bundle_file: str, target_file: Path) -> None:
     _copy(_bundled_file, target_file)
 
 
+# TODO Check tests
+# FIXME Instead of calling remove explicitly, why not "chain on success"?
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
@@ -340,23 +377,25 @@ def restore(bundle_file: str,
     if _bundled_file.is_dir():
         print(f"{bundle_file} must be a file. To restore whole directories, use unbundle")
     if remove and as_link:
-        print("Option --remove cannot be used when restoring as link")
+        print("Option --remove cannot be used when restoring as a link")
         raise typer.Exit(1)
-    _action_name: str
-    _overwrite = bool(overwrite) # Silence type checker
-    try:
-        if as_link:
-            _target_file = _restore_as_link(_bundled_file, _overwrite)
-            _action_name = f"{_target_file} now links to {_bundled_file}"
-        else:
-            _target_file = _restore_copy(_bundled_file, _overwrite)
-            _action_name = f"Restored {_target_file}"
-    except (NoBacklinkError, FileExistsError) as err:
-        print(err)
-        raise typer.Exit(1)
+    _action: dict
+    if as_link:
+        _action = {'fn': partial(_restore_as_link, overwrite=overwrite),
+                   'msg': "{path} now links to {result}"}
+    else:
+        _action = {'fn': partial(_restore_copy, overwrite=overwrite),
+                   'msg': "Restored {result}"}
+    # Side effects:
+    _result = _act_on_path(_bundled_file, _action['fn'])
     if remove:
         _rm_file_and_backlink(_bundled_file)
-    print(_action_name)
+
+    if _result['success']:
+        str.format(_action['msg'], **_result)
+    else:
+        print(_result['err'])
+        raise typer.Exit(1)
 
 
 # TODO Write automated test
@@ -407,7 +446,7 @@ def rmdir(bundle_dir: str,
     shutil.rmtree(str(_dir))
 
 
-# TODO Test deletion of subdirs if some files are skipped
+# TODO Write test
 @cli.command()
 def unbundle(bundle_dir: Annotated[Optional[str],
                                    typer.Argument()] = None) -> None:
@@ -419,28 +458,16 @@ def unbundle(bundle_dir: Annotated[Optional[str],
     else:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
-    _restored, _failed = _restore_loop(_bundle_dir, True, _restore_copy)
-    if _restored:
-        for _dict in _restored:
-            _restored_file = _dict['restored']
-            _src_file = _dict['src']
-            print(f"Restored {_restored_file} from {_src_file}")
-    if _failed:
-        for _dict in _failed:
-            _src_file = _dict['src']
-            _err = _dict['err']
-            print(f"Could not restore {_src_file}: {_err}")
-
-    # TODO Only delete these dirs where the path is not
-    #      also part of a _failed src.
-    # TODO Write function _is_subpath_of
-
-
-    # for _dir in _delete_dirs[::-1]:
-    #     print(f"Deleting {_dir}")
-    #     shutil.rmtree(_dir)
-#    subprocess.call(["tree", str(_bundle_dir)])
-
+    # NOTE Dry run active!
+#    _results = _restore_dir_copy(_bundle_dir, True)
+    _results = _restore_dir_dry_run(_bundle_dir, True)
+    _restored, _failed = _split_results(_results)
+    for _dict in _restored:
+        print(f"{_dict['path']} has been restored as {_dict['result']}")
+    for _dict in _failed:
+        print(f"{_dict['path']} could not be restored: {_dict['err']}")
+    for _path in _files_first(_removable(_results)):
+        print(f"Deleting {_path}")
 
 
 # TODO Write tests
