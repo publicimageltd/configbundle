@@ -154,6 +154,27 @@ def test_restore_copy_no_overwrite(test_text_file, empty_dir):
         cb._restore_copy(_bundled_file, False)
 
 
+def test_restore_as_link_overwrite(test_text_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    test_text_file.unlink()
+    with open(test_text_file, 'w') as f:
+        f.writelines(['Line 1', 'Line 2'])
+    assert test_text_file.exists()
+    assert not test_text_file.is_symlink()
+    cb._restore_as_link(_bundled_file, True)
+    assert test_text_file.is_symlink()
+
+def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    test_text_file.unlink()
+    with open(test_text_file, 'w') as f:
+        f.writelines(['Line 1', 'Line 2'])
+    assert test_text_file.exists()
+    assert not test_text_file.is_symlink()
+    with pytest.raises(FileExistsError):
+        cb._restore_as_link(_bundled_file, False)
+
+
 # -----------------------------------------------------------
 # Test CMDs:
 
