@@ -118,10 +118,6 @@ def test_move(empty_dir):
     assert Path(dest_dir / dest_file.name).exists()
 
 
-def test_link_back():
-    """Test _link_back"""
-    pass
-
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
     cb._bundle_file(test_text_file, empty_dir)
@@ -174,6 +170,19 @@ def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
     with pytest.raises(FileExistsError):
         cb._restore_as_link(_bundled_file, False)
+
+
+# def test_restore_loop(empty_dir):
+#     filelist = ["dir1/file1",
+#                 "dir2/aa",
+#                 "dir2/bb",
+#                 "dir3/",
+#                 "dir3/.gitignore",
+#                 "dir4/a_1_a",
+#                 "dir4/a_1_a.link",
+#                 "dir4/b_1_b",
+#                 "dir5/"
+#                 "a.link"]
 
 
 # -----------------------------------------------------------

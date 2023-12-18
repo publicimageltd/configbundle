@@ -237,6 +237,7 @@ def _restore_dry_run(bundled_file: Path, overwrite: bool) -> Path:
     return _target_file
 
 
+# TODO Write test
 def _restore_loop(bundle_dir: Path, overwrite: bool,
                   restore_fn: Callable[[Path, bool], Path]) -> tuple[list[dict], list[dict]]:
     """Loop over BUNDLE_DIR (an absolute path), calling RESTORE-FN on each non-suffixed file.
