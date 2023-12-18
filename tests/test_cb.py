@@ -182,7 +182,7 @@ def test_cmd_restore_as_file(test_text_file, empty_repo,
     # Test restoring the bundled file at its original location
     assert not test_text_file.exists()
     if _bundle_str:
-        _tmp = Path(_bundle_str) / test_text_file.name # 
+        _tmp = Path(_bundle_str) / test_text_file.name #
     else:
         _tmp = test_text_file.name
     _bundle_file_arg = f"{_tmp}"
