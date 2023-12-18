@@ -141,6 +141,18 @@ def test_get_associated_target(test_text_file, empty_dir):
     assert cb._get_associated_target(_bundled_file) == test_text_file
 
 
+def test_restore_copy_overwrite(test_text_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    assert test_text_file.is_symlink()
+    cb._restore_copy(_bundled_file, True)
+    assert not test_text_file.is_symlink()
+
+def test_restore_copy_no_overwrite(test_text_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    assert test_text_file.is_symlink()
+    with pytest.raises(FileExistsError):
+        cb._restore_copy(_bundled_file, False)
+
 
 # -----------------------------------------------------------
 # Test CMDs:
