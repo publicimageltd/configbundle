@@ -18,12 +18,10 @@ import typer  # noqa: E402
 # TODO Turn assert_xx into validations using Typer
 #
 # -----------------------------------------------------------
-# Global Variables
+# Global Declarations
 
 APP_NAME = 'configbundle'
 cli = typer.Typer(no_args_is_help=True)
-
-# Custom Exceptions:
 
 
 class NoBacklinkError(FileNotFoundError):
@@ -31,20 +29,16 @@ class NoBacklinkError(FileNotFoundError):
     # __init__ mit (errno, message, filename)
 
 
-class InvalidBundleSpecification(Exception):
+class InvalidBundleSpecificationError(Exception):
     """Bundle Specification is invalid (empty or otherwise flawed)."""
 
 
-# TODO Implement this error in add
-class FileAlreadyBundledError(Exception):
-    """File already exists in bundle."""
-    file: Path
-    bundle: str
+class FileIsSymlinkError(Exception):
+    """File is a symlink, but should not be one.."""
 
-    def __init__(self, file, bundle, *args, **kwargs):
-        self.file = file
-        self.bundle = bundle
-        super().__init__(*args, **kwargs)
+
+class FileAlreadyBundledError(FileExistsError):
+    """File already exists in bundle."""
 
 
 # -----------------------------------------------------------
@@ -63,6 +57,15 @@ def _is_suffixed(file: Path) -> bool:
 def _has_parents(path: Path) -> bool:
     """Check if PATH has parent directories."""
     return (path.parent == Path('.'))
+
+
+def _is_subpath_of(sub: Path, root: Path) -> bool:
+    """Check if P1 is a subpath of p2.
+    Both paths must be either relative or absolute."""
+    try:
+        return Path(os.path.commonpath([sub, root])) == root
+    except ValueError:
+        return False
 
 
 def _rooted_name(path: Path, root: Path | None = None) -> str:
@@ -162,18 +165,26 @@ def _copy(file: Path, target_path: Path) -> Path:
     return shutil.copy2(f"{file}", f"{target_file}")
 
 
-def _link_back(link_file: Path, target_file: Path) -> None:
-    """Create a suffixed symlink pointing to TARGET_FILE."""
-    link_file = _suffix(link_file)
+def _create_backlink(bundle_file: Path, target_file: Path) -> None:
+    """Create a symlink file associated with BUNDLE_FILE, pointing to TARGET_FILE."""
+    link_file = _suffix(bundle_file)
     link_file.symlink_to(target_file.absolute())
 
 
 def _bundle_file(file: Path, bundle_dir: Path) -> None:
     """Move FILE into BUNDLE_DIR and replace FILE with a link pointing to the bundled file.
-       Additionally create a backlink in the bundle dir."""
-    bundled_file = _move(file, bundle_dir)
-    _link_back(bundled_file, file)
-    file.symlink_to(bundled_file)
+    Additionally create a backlink in the bundle dir.
+    Throw an error if bundled file already exists, or if FILE is a symlink."""
+    if file.is_symlink():
+        raise FileIsSymlinkError(f"File {file} cannot be a symlink")
+    _target_file = bundle_dir.absolute() / file.name
+    if _target_file.exists():
+        raise FileAlreadyBundledError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
+    _bundled_file = _move(file, bundle_dir)
+    if _bundled_file != _target_file:
+        print(f"Warning: {_bundled_file} is not equal {_target_file}")
+    _create_backlink(_bundled_file, file)
+    file.symlink_to(_bundled_file)
 
 
 def _get_associated_target(file: Path) -> Path:
@@ -184,7 +195,10 @@ def _get_associated_target(file: Path) -> Path:
     try:
         _target_file = _backlink.readlink()
     except FileNotFoundError as err:
-        raise NoBacklinkError(err.errno, f"File {file} has no backlink file", err.filename)
+        raise NoBacklinkError(errno.ENOENT, f"File {file} has no backlink file", err.filename)
+    except OSError as err:
+        if err.errno == errno.EINVAL:   # 'Invalid Argument'
+            raise NoBacklinkError(errno.ENOENT, "Backlink file is invalid", f"{_backlink}")
     return _target_file
 
 
@@ -213,8 +227,66 @@ def _restore_as_link(bundled_file: Path, overwrite: bool) -> Path:
     return _target_file
 
 
-def _remove_bundle_and_backlink(bundled_file: Path) -> None:
-    """Remove the bundle and its backlink file.
+def _restore_dry_run(bundled_file: Path, overwrite: bool) -> Path:
+    """Only simulate restoring (copy)."""
+    _target_file = _get_associated_target(bundled_file)
+    if not overwrite and _target_file.exists():
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
+    return _target_file
+
+
+def _restore_loop(bundle_dir: Path, overwrite: bool,
+                  restore_fn: Callable[[Path, bool], Path]) -> tuple[list[dict], list[dict]]:
+    """Loop over BUNDLE_DIR (an absolute path), calling RESTORE-FN on each non-suffixed file.
+    Return two list of dicts for the restored files and the failed file operations, respectively.
+    """
+    _failed: list[dict] = []
+    _restored: list[dict] = []
+    for _root, _dirs, _files in os.walk(str(bundle_dir), topdown=False):
+        for _file in filter(lambda f: not (_ignore(f) or _is_suffixed(f)), map(Path, _files)):
+            _src_file = Path(_root) / _file
+            try:
+                _target_file = restore_fn(_src_file, overwrite)
+                _restored.append({'src': Path(_src_file),
+                                  'restored': Path(_target_file)})
+            except OSError as err:
+                _failed.append({'src': Path(_src_file),
+                                # To print only parts of the standard
+                                # error msg, we can use err.strerror
+                                # and err.filename
+                                'err': err})
+    return (_restored, _failed)
+
+
+def _all_paths_except(blockfiles: list[Path], root: Path) -> list[Path]:
+    """Get all paths from ROOT except BLOCKFILES and their containing dirs."""
+    # This is actually a reduce()
+    _result = list(root.rglob('**/*'))
+    for _file in blockfiles:
+        _result = [x for x in _result if not x == _file and not x == _file.parent]
+    return _result
+
+
+def _files_first(pathlist: list[Path]) -> list[Path]:
+    """Sort PATHLIST with files first."""
+    return sorted(pathlist, key=lambda x: len(x.parts), reverse=True)
+
+
+def _rm_bundle(bundle_dir: Path, blockerlist: list[Path]) -> None:
+    """Remove all files and dirs in BUNDLE_DIR except those on BLOCKERLIST.
+    The files in BLOCKERLIST must be at some place 'below' BUNDLE_DIR."""
+    _files = _files_first(_all_paths_except(blockerlist, bundle_dir))
+    for _file in _files:
+        try:
+            _file.unlink()
+        except IsADirectoryError:
+            # If this raises a "Directory not empty" error,
+            # something went wrong above
+            _file.rmdir()
+
+
+def _rm_file_and_backlink(bundled_file: Path) -> None:
+    """Remove the bundle file and its associated backlink file.
     Do not raise an error if no backlink file is found."""
     _backlink = _suffix(bundled_file)
     bundled_file.unlink(missing_ok=True)
@@ -229,20 +301,15 @@ def add(file: Path,
                               typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
-    _repo = get_repo()
-    _dir = _repo
+    _dir = get_repo()
     if bundle_dir:
         _dir = _dir / _parse_bundle_dir(bundle_dir)
-    if Path(_dir / file.name).exists():
-        print("File is already bundled")
-        raise typer.Exit(1)
-    if file.is_symlink() and file.resolve().is_relative_to(_repo):
-        _bundled_path_name = _rooted_name(file.resolve())
-        print(f"File is already bundled in {_bundled_path_name}")
-        raise typer.Exit(1)
     _dir.mkdir(parents=True, exist_ok=True)
-    _bundle_file(file, _dir)
-
+    try:
+        _bundle_file(file, _dir)
+    except (FileAlreadyBundledError, FileIsSymlinkError) as err:
+        print(err)
+        raise typer.Exit(1)
 
 @cli.command()
 def copy(bundle_file: str, target_file: Path) -> None:
@@ -267,11 +334,13 @@ def restore(bundle_file: str,
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
     _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
     assert_path(_bundled_file)
-    _overwrite = bool(overwrite) # Silence type checker
+    if _bundled_file.is_dir():
+        print(f"{bundle_file} must be a file. To restore whole directories, use unbundle")
     if remove and as_link:
         print("Option --remove cannot be used when restoring as link")
         raise typer.Exit(1)
     _action_name: str
+    _overwrite = bool(overwrite) # Silence type checker
     try:
         if as_link:
             _target_file = _restore_as_link(_bundled_file, _overwrite)
@@ -283,7 +352,7 @@ def restore(bundle_file: str,
         print(err)
         raise typer.Exit(1)
     if remove:
-        _remove_bundle_and_backlink(_bundled_file)
+        _rm_file_and_backlink(_bundled_file)
     print(_action_name)
 
 
@@ -339,34 +408,37 @@ def rmdir(bundle_dir: str,
 @cli.command()
 def unbundle(bundle_dir: Annotated[Optional[str],
                                    typer.Argument()] = None) -> None:
-    """Restore BUNDLE_FILE_OR_DIR and delete bundled files.
+    """Restore BUNDLE_DIR and delete bundled files.
     Note: This uncondtionally replaces all backlinked files with the bundled files."""
-    # First determine what is to be deleted
     _bundle_dir = get_repo()
     if bundle_dir:
         _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_dir)
     else:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
-    # Now do the deletion
-    _delete_dirs: list[str] = []
-    _repo = get_repo()
-    for _root, _dirs, _files in os.walk(str(_bundle_dir), topdown=False):
-        print("Looking for bundled files...")
-        _delete_dirs.append(_root)
-        for _file in filter(lambda f: not (_ignore(f) or _is_suffixed(f)), map(Path, _files)):
-            _src_file = Path(_root) / _file
-            _src_file_name = _rooted_name(_src_file, _repo)
-            try:
-                _target_file = _restore_copy(_src_file, True)
-                print(f"Restoring {_target_file} from {_src_file_name}")
-            except NoBacklinkError:
-                print(f"{_src_file_name} WARNING: No backlink file found, skipping")
-                _delete_dirs.pop()
-    for _dir in _delete_dirs[::-1]:
-        print(f"Deleting {_dir}")
-        shutil.rmtree(_dir)
+    _restored, _failed = _restore_loop(_bundle_dir, True, _restore_copy)
+    if _restored:
+        for _dict in _restored:
+            _restored_file = _dict['restored']
+            _src_file = _dict['src']
+            print(f"Restored {_restored_file} from {_src_file}")
+    if _failed:
+        for _dict in _failed:
+            _src_file = _dict['src']
+            _err = _dict['err']
+            print(f"Could not restore {_src_file}: {_err}")
+
+    # TODO Only delete these dirs where the path is not
+    #      also part of a _failed src.
+    # TODO Write function _is_subpath_of
+
+
+    # for _dir in _delete_dirs[::-1]:
+    #     print(f"Deleting {_dir}")
+    #     shutil.rmtree(_dir)
 #    subprocess.call(["tree", str(_bundle_dir)])
+
+
 
 # TODO Write tests
 @cli.command()
