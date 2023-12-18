@@ -171,10 +171,11 @@ def _create_backlink(bundle_file: Path, target_file: Path) -> None:
     link_file.symlink_to(target_file.absolute())
 
 
-def _bundle_file(file: Path, bundle_dir: Path) -> None:
+def _bundle_file(file: Path, bundle_dir: Path) -> Path:
     """Move FILE into BUNDLE_DIR and replace FILE with a link pointing to the bundled file.
     Additionally create a backlink in the bundle dir.
-    Throw an error if bundled file already exists, or if FILE is a symlink."""
+    Throw an error if bundled file already exists, or if FILE is a symlink.
+    Return the bundled file."""
     if file.is_symlink():
         raise FileIsSymlinkError(f"File {file} cannot be a symlink")
     _target_file = bundle_dir.absolute() / file.name
@@ -185,6 +186,7 @@ def _bundle_file(file: Path, bundle_dir: Path) -> None:
         print(f"Warning: {_bundled_file} is not equal {_target_file}")
     _create_backlink(_bundled_file, file)
     file.symlink_to(_bundled_file)
+    return _bundled_file
 
 
 def _get_associated_target(file: Path) -> Path:
