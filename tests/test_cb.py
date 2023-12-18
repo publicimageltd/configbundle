@@ -130,6 +130,12 @@ def test_bundle_file(test_text_file, empty_dir):
     assert os.path.samefile(bundled_backlink, test_text_file)
     assert test_text_file.is_symlink()
     assert test_text_file.resolve() == bundled_file
+    with pytest.raises(cb.FileIsSymlinkError):
+        cb._bundle_file(test_text_file, empty_dir)
+    with pytest.raises(cb.FileAlreadyBundledError):
+        cb._bundle_file(bundled_file, empty_dir)
+
+
 
 
 # -----------------------------------------------------------
