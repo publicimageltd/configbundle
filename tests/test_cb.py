@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from typing import Any
 import pytest
 import os
 import click
@@ -22,6 +23,13 @@ def _add_if_not_none(p: Path | str,
     return _res
 
 
+def _write_dummy_content(file: Path,
+                         content: list[Any] | None = None) -> None:
+    """Write some dummy content into FILE."""
+    with open(file, 'w') as f:
+        f.writelines(content or ['dummy content', 'two lines'])
+
+
 # -----------------------------------------------------------
 # FIXTURES
 
@@ -32,8 +40,7 @@ def test_text_file(tmp_path: Path) -> Path:
     filename = tmp_path / "textfiles"
     filename.mkdir()
     filename = filename / "test.conf"
-    with open(filename, 'w') as file:
-        file.writelines(['dummy content', 'two lines'])
+    _write_dummy_content(filename)
     return filename
 
 
@@ -95,14 +102,10 @@ def test_parse_bundle_file():
 
 def test_move(empty_dir):
     """Test _move."""
-    def write_test_file(filename):
-        with open(filename, 'w') as file:
-            file.writelines(['dummy content', 'two lines'])
-
     # Test moving to a file
     src_file = empty_dir / "srcfile"
     dest_file = empty_dir / "destfile"
-    write_test_file(src_file)
+    _write_dummy_content(src_file)
     assert src_file.exists()
     cb._move(src_file, dest_file)
     assert not src_file.exists()
@@ -157,8 +160,7 @@ def test_restore_copy_no_overwrite(test_text_file, empty_dir):
 def test_restore_as_link_overwrite(test_text_file, empty_dir):
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     test_text_file.unlink()
-    with open(test_text_file, 'w') as f:
-        f.writelines(['Line 1', 'Line 2'])
+    _write_dummy_content(test_text_file)
     assert test_text_file.exists()
     assert not test_text_file.is_symlink()
     cb._restore_as_link(_bundled_file, True)
@@ -167,8 +169,7 @@ def test_restore_as_link_overwrite(test_text_file, empty_dir):
 def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     test_text_file.unlink()
-    with open(test_text_file, 'w') as f:
-        f.writelines(['Line 1', 'Line 2'])
+    _write_dummy_content(test_text_file)
     assert test_text_file.exists()
     assert not test_text_file.is_symlink()
     with pytest.raises(FileExistsError):
