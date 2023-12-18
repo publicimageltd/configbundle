@@ -136,6 +136,10 @@ def test_bundle_file(test_text_file, empty_dir):
         cb._bundle_file(bundled_file, empty_dir)
 
 
+def test_get_associated_target(test_text_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    assert cb._get_associated_target(_bundled_file) == test_text_file
+
 
 
 # -----------------------------------------------------------
