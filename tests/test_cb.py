@@ -343,7 +343,7 @@ class TestCMDAdd:
     cmd_bundle_dir: str | None
     bundled_file: Path
     file: Path
-    
+
     @pytest.fixture
     def setup(self, test_text_file, empty_repo, req_bundledir_strings):
         _dir = _add_if_not_none(empty_repo, req_bundledir_strings)
@@ -387,21 +387,34 @@ class TestCMDRestore:
         self.cmd_arg = str(_cmd_arg)
 
     def test_cmd_restore_as_file(self, setup):
-        self.target_file.unlink()
-        cb.restore(self.cmd_arg, False, True)
+        # First overwrite target_file
+        cb.restore(self.cmd_arg, False, True, False)
         assert self.target_file.exists()
         assert not self.target_file.is_symlink()
+        # Now raise error
         with pytest.raises(click.exceptions.Exit):
-            cb.restore(self.cmd_arg, False, False)
+            cb.restore(self.cmd_arg, False, False, False)
+
+
+    def test_cmd_restore_remove(self, setup):
+        # Overwrite target and remove bundled file:
+        cb.restore(self.cmd_arg, False, True, True)
+        assert self.target_file.exists()
+        assert not self.target_file.is_symlink()
+        assert not self.bundled_file.exists()
+        assert not cb._suffix(self.bundled_file).exists()
+
 
     def test_cmd_restore_as_link(self, setup):
+        # Overwrite
         self.target_file.unlink()
-        cb.restore(self.cmd_arg, True, True)
+        cb.restore(self.cmd_arg, True, True, False)
         assert self.target_file.exists()
         assert self.target_file.is_symlink()
         assert os.path.samefile(self.target_file, self.bundled_file)
+        # Raise error when overwriting
         with pytest.raises(click.exceptions.Exit):
-            cb.restore(self.cmd_arg, True, False)
+            cb.restore(self.cmd_arg, True, False, False)
 
 
 
