@@ -224,6 +224,23 @@ def test_act_on_path_failure(empty_dir):
     assert _result['result'].strerror == os.strerror(errno.ENOENT)
 
 
+# NOTE No need to test failing results
+def test_act_on_paths_success():
+    _chain = []
+
+    def _action_fn(p):
+        _chain.append(str(p))
+        return p
+
+    _paths = ["/a", "directory", "a/bba", "very/nested/stuff"]
+    _result = cb._act_on_paths(_paths, _action_fn)
+
+    assert _chain == [str(x) for x in _paths]
+    assert all(entry['success'] for entry in _result)
+
+
+
+
 # -----------------------------------------------------------
 # Test CMDs:
 
