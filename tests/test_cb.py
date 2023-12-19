@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 import os
 import click
+import typer
 import subprocess
 import sys
 sys.path.append('../cbundle')
@@ -114,6 +115,21 @@ def test_get_bundle_file(empty_repo, req_bundlefile_strings):
 
 def test_get_bundle_dir(empty_repo, req_bundledir_strings):
     assert cb._get_bundle_dir(req_bundledir_strings) == _add_if_not_none(empty_repo, req_bundledir_strings)
+
+def test_get_repo(monkeypatch, empty_dir):
+    monkeypatch.setattr(typer, "get_app_dir", lambda _: empty_dir)
+    assert cb.get_repo() == empty_dir
+    new_dir = empty_dir / "new"
+    monkeypatch.setattr(typer, "get_app_dir", lambda _: new_dir)
+    assert cb.get_repo() == new_dir
+    assert new_dir.exists()
+    assert new_dir.is_dir()
+    a_file = empty_dir / "a_file"
+    _write_dummy_content(a_file)
+    monkeypatch.setattr(typer, "get_app_dir", lambda _: a_file)
+    with pytest.raises(click.exceptions.Exit):
+        cb.get_repo()
+
 
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
