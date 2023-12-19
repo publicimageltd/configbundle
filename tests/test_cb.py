@@ -112,6 +112,8 @@ def test_get_bundle_file(empty_repo, req_bundlefile_strings):
     assert cb._get_bundle_file(req_bundlefile_strings) == Path(empty_repo) / req_bundlefile_strings
 
 
+def test_get_bundle_dir(empty_repo, req_bundledir_strings):
+    assert cb._get_bundle_dir(req_bundledir_strings) == _add_if_not_none(empty_repo, req_bundledir_strings)
 
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
