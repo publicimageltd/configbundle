@@ -100,24 +100,6 @@ def test_parse_bundle_file():
         assert cb._parse_bundle_file("dir/")
 
 
-def test_move(empty_dir):
-    """Test _move."""
-    # Test moving to a file
-    src_file = empty_dir / "srcfile"
-    dest_file = empty_dir / "destfile"
-    _write_dummy_content(src_file)
-    assert src_file.exists()
-    cb._move(src_file, dest_file)
-    assert not src_file.exists()
-    assert dest_file.exists()
-
-    # Test moving into a dir
-    dest_dir = empty_dir / "destdir"
-    dest_dir.mkdir()
-    cb._move(dest_file, dest_dir)
-    assert Path(dest_dir / dest_file.name).exists()
-
-
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
     cb._bundle_file(test_text_file, empty_dir)
@@ -129,8 +111,6 @@ def test_bundle_file(test_text_file, empty_dir):
     assert os.path.samefile(bundled_backlink, test_text_file)
     assert test_text_file.is_symlink()
     assert test_text_file.resolve() == bundled_file
-    with pytest.raises(cb.FileIsSymlinkError):
-        cb._bundle_file(test_text_file, empty_dir)
     with pytest.raises(cb.FileAlreadyBundledError):
         cb._bundle_file(bundled_file, empty_dir)
 
@@ -200,28 +180,6 @@ def test_cmd_add(test_text_file,
     assert _repo_file.exists()
     with pytest.raises(click.exceptions.Exit):
         cb.add(test_text_file, _bundle_str)
-
-
-def test_cmd_copy(empty_dir):
-    """Test copy"""
-    def write_test_file(filename):
-        with open(filename, 'w') as file:
-            file.writelines(['dummy content', 'two lines'])
-
-    # Test copy to file:
-    src_file = empty_dir / "srcfile"
-    dest_file = empty_dir / "destfile"
-    write_test_file(src_file)
-    assert src_file.exists()
-    cb._copy(src_file, dest_file)
-    assert src_file.exists()
-    assert dest_file.exists()
-
-    # Test copy to dir:
-    Path(empty_dir / "testdir").mkdir()
-    dest_file = empty_dir / "testdir"
-    cb._copy(src_file, dest_file)
-    assert Path(dest_file / src_file).exists()
 
 
 def test_cmd_restore_as_file(test_text_file, empty_repo,

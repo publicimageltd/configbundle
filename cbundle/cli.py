@@ -15,7 +15,6 @@ sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
 
 
-# TODO Make main arg in cmds path-like: bundle/file
 # TODO Rewrite Tests
 # TODO Turn assert_xx into validations using Typer
 #
@@ -104,6 +103,10 @@ def assert_exists(p):
 def assert_is_dir(p: Path) -> None:
     """Raise an error if P is not a directory."""
     assert_path(p, Path.is_dir, msg="{p} is not a directory")
+
+def assert_is_no_symlink(p: Path) -> None:
+    """Raise an error if P is not a symlink."""
+    assert_path(p, lambda x: not Path.is_symlink(x), msg="{p} cannot be a symlink")
 
 
 def _sanitize_bundle_arg(bundle_arg: str) -> str:
@@ -391,7 +394,7 @@ def add(file: Path,
                               typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_exists(file)
-    assert_path(file, Path.is_symlink, "{p} cannot be a symlink")
+    assert_is_no_symlink(file)
     _dir = _get_bundle_dir(bundle_dir)
     _dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -450,7 +453,7 @@ def restore(bundle_file: str,
     if _result['success']:
         str.format(_action['msg'], **_result)
     else:
-        print(_result['err'])
+        print(_result['result'])
         raise typer.Exit(1)
 
 
@@ -518,7 +521,7 @@ def unbundle(bundle_dir: Annotated[Optional[str],
     for _dict in _restored:
         print(f"{_dict['path']} has been restored as {_dict['result']}")
     for _dict in _failed:
-        print(f"{_dict['path']} could not be restored: {_dict['err']}")
+        print(f"{_dict['path']} could not be restored: {_dict['result']}")
     for _path in _files_first(_removable(_results)):
         print(f"Deleting {_path}")
 
