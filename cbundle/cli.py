@@ -126,6 +126,19 @@ def _parse_bundle_file(bundle_file: str) -> Path:
     return Path(_arg)
 
 
+def _get_bundle_dir(bundle_dir: str | None) -> Path:
+    """Return BUNDLE_DIR within the repository."""
+    _dir = get_repo()
+    if bundle_dir:
+        _dir = _dir / _parse_bundle_dir(bundle_dir)
+    return _dir
+
+
+def _get_bundle_file(bundle_file: str) -> Path:
+    """Return BUNDLE_FILE within the repository."""
+    return get_repo() / _parse_bundle_file(bundle_file)
+
+
 def _ignore(file: Path) -> bool:
     """Return False when file is a bundle file."""
     res = False
@@ -381,6 +394,8 @@ def _rm_file_and_backlink(bundled_file: Path) -> None:
 
 
 # -----------------------------------------------------------
+# CLI Commands
+
 # TODO CLI allow to add multiple files by using multiple arguments
 @cli.command()
 def add(file: Path,
@@ -388,9 +403,7 @@ def add(file: Path,
                               typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
-    _dir = get_repo()
-    if bundle_dir:
-        _dir = _dir / _parse_bundle_dir(bundle_dir)
+    _dir = _get_bundle_dir(bundle_dir)
     _dir.mkdir(parents=True, exist_ok=True)
     try:
         _bundle_file(file, _dir)
@@ -398,14 +411,15 @@ def add(file: Path,
         print(err)
         raise typer.Exit(1)
 
+
 @cli.command()
 def copy(bundle_file: str, target_file: Path) -> None:
     """Copy BUNDLE_FILE to TARGET_FILE."""
-    _file = _parse_bundle_file(bundle_file)
     if target_file.exists():
         typer.confirm(f"File {target_file} already exists, overwrite? ",
                       default=False, abort=True)
-    _bundled_file = get_repo() / _file
+
+    _bundled_file = _get_bundle_file(bundle_file)
     assert_path(_bundled_file)
     _copy(_bundled_file, target_file)
 
@@ -421,13 +435,14 @@ def restore(bundle_file: str,
             remove: Annotated[Optional[bool],
                               typer.Option(help="Delete bundled file after restoring target")] = False) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
-    _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
+    _bundled_file = _get_bundle_file(bundle_file)
     assert_path(_bundled_file)
     if _bundled_file.is_dir():
         print(f"{bundle_file} must be a file. To restore whole directories, use unbundle")
     if remove and as_link:
         print("Option --remove cannot be used when restoring as a link")
         raise typer.Exit(1)
+
     _action: dict
     if as_link:
         _action = {'fn': partial(_restore_as_link, overwrite=overwrite),
@@ -435,7 +450,7 @@ def restore(bundle_file: str,
     else:
         _action = {'fn': partial(_restore_copy, overwrite=overwrite),
                    'msg': "Restored {result}"}
-    # Side effects:
+
     _result = _act_on_path(_bundled_file, _action['fn'])
     if remove:
         _rm_file_and_backlink(_bundled_file)
@@ -455,25 +470,23 @@ def rm(bundle_file: str,
                         typer.Option("--force", "-f",
                                      help="Do not ask for confirmation")] = False) -> None:
     """Remove BUNDLE_FILE and its associated link."""
-    _bundled_file = get_repo() / _parse_bundle_file(bundle_file)
+    _bundled_file = _get_bundle_file(bundle_file)
     assert_path(_bundled_file)
     _backlink_file = _suffix(_bundled_file)
+    # Create explicit warning if --force is not set:
     if not force:
-        # - Prepare permission for the deletion
-        _shortened_bundle_file = _rooted_name(_bundled_file)
+        _backlink_warning = ''
         if _backlink_file.exists():
-            _shortened_bundle_file += 'and its associated backlink'
-        # - Prepare warning if backlink points to a link, which would thus be broken:
-        _broken_link_warning = ''
+            _backlink_warning = " and its associated backlink"
+        _target_warning = ''
         try:
             _target_file = _get_associated_target(_bundled_file)
         except NoBacklinkError:
             _target_file = None
         if _target_file and _target_file.is_symlink():
-            _shortened_target_file = _rooted_name(_target_file, Path.home())
-            _broken_link_warning = f" This will break the link stored in {_shortened_target_file}"
-        typer.confirm(f"Delete bundled file {_shortened_bundle_file}{_broken_link_warning}",
-                      default=False, abort=True)
+            _target_warning = f" This will break the link stored in {_rooted_name(_target_file, Path.home())}"
+        msg = f"Delete {_rooted_name(_bundled_file)}{_backlink_warning}?{_target_warning}"
+        typer.confirm(msg, default=False, abort=True)
     _backlink_file.unlink(missing_ok=True)
     _bundled_file.unlink()
 
@@ -486,10 +499,10 @@ def rmdir(bundle_dir: str,
                            typer.Option("--force", "-f",
                                         help="Delete non-empty dirs")] = False) -> None:
     """Delete bundle directory BUNDLE_DIR and all of its subdirectories."""
-    _dir = get_repo() / _parse_bundle_dir(bundle_dir)
-    _dir_name = _rooted_name(_dir)
+    _dir = _get_bundle_dir(bundle_dir)
     assert_path(_dir)
     if _dir.glob("*") and not force:
+        _dir_name = _rooted_name(_dir)
         print(f"{_dir_name} is not empty. Use --force to delete anyways")
         raise typer.Exit(1)
     shutil.rmtree(str(_dir))
@@ -501,12 +514,11 @@ def unbundle(bundle_dir: Annotated[Optional[str],
                                    typer.Argument()] = None) -> None:
     """Restore BUNDLE_DIR and delete bundled files.
     Note: This uncondtionally replaces all backlinked files with the bundled files."""
-    _bundle_dir = get_repo()
-    if bundle_dir:
-        _bundle_dir = _bundle_dir / _parse_bundle_dir(bundle_dir)
-    else:
+    if not bundle_dir:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
+
+    _bundle_dir = _get_bundle_dir(bundle_dir)
     # NOTE Dry run active!
 #    _results = _restore_dir_copy(_bundle_dir, True)
     _results = _restore_dir_dry_run(_bundle_dir, True)
@@ -528,7 +540,6 @@ def destroy() -> None:
         print("There is no repository to delete")
         raise typer.Exit(1)
     assert_path(_repo_dir, Path.is_dir, msg="Error: {p} is not a directory, cannot proceed")
-    # _is_empty = bool(_repo_dir.glob('*'))
     typer.confirm(f"Delete the repository at {_repo_dir} and everything it contains?",
                   default=False, abort=True)
     shutil.rmtree(str(_repo_dir))
@@ -539,11 +550,7 @@ def destroy() -> None:
 def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE_DIR.
     If no bundle dir is given, list the repository root."""
-    _repo = get_repo()
-    if bundle_dir is None:
-        _dir = _repo
-    else:
-        _dir = _repo / _parse_bundle_dir(bundle_dir)
+    _dir = _get_bundle_dir(bundle_dir)
     assert_path(_dir)
     if not _dir.is_dir():
         print(f"{_dir} is not a directory")
