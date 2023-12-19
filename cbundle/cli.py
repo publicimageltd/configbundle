@@ -157,11 +157,14 @@ def _ignore(file: Path) -> bool:
 
 def _relevant_files(bundle_dir: Path) -> list[Path]:
     """Filter out ignored files in BUNDLE_DIR (recursing)."""
-    return list(filter(lambda x: not _ignore(x), bundle_dir.rglob('*')))
+    return list(filter(lambda x: not _ignore(x),
+                       bundle_dir.rglob('*')))
 
+# NOTE No tests
 def _files_first(pathlist: list[Path]) -> list[Path]:
     """Sort PATHLIST with files first."""
-    return sorted(pathlist, key=lambda x: len(x.parts), reverse=True)
+    return sorted(pathlist,
+                  key=lambda x: len(x.parts), reverse=True)
 
 # -----------------------------------------------------------
 # File and dir functions
