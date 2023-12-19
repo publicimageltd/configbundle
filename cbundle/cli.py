@@ -311,6 +311,7 @@ def _restore_as_link(bundled_file: Path, overwrite: bool) -> Path:
     return _target_file
 
 
+# NOTE No tests
 def _restore_dry_run(bundled_file: Path, overwrite: bool) -> Path:
     """Only simulate restoring (copy).
     Check for files, but do nothing with them."""
@@ -318,6 +319,7 @@ def _restore_dry_run(bundled_file: Path, overwrite: bool) -> Path:
     if not overwrite and _target_file.exists():
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
     return _target_file
+
 
 def _act_on_path(path: Path,
                  action_fn: Callable[[Path], Path]) -> dict:
@@ -332,6 +334,7 @@ def _act_on_path(path: Path,
         _success = True
     except OSError as err:
         _result = err
+        print(err)
         _success = False
     return {'path': path,
             'result': _result,

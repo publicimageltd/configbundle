@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from typing import Any
 import pytest
 import os
+import errno
 import click
 import typer
 import subprocess
@@ -198,10 +199,30 @@ def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
         cb._restore_as_link(_bundled_file, False)
 
 
+# AH, I love testing pure functions!
+def test_act_on_path_sucess():
+    def _action_fn(p):
+        return p
+    p = Path.home()
+    assert cb._act_on_path(p, _action_fn) == {'path': p,
+                                              'result': p,
+                                              'success': True}
 
+def test_act_on_path_failure(empty_dir):
+    _non_existent_file = Path(empty_dir / "non-existent-file")
 
+    def _action_fn(p):
+        _non_existent_file.unlink()
 
-        
+    _result = cb._act_on_path(empty_dir, _action_fn)
+    assert _result['path'] == empty_dir
+    assert not _result['success']
+    # We can't compare the exception directly, for some reason,
+    # so we just check the basics:
+    assert isinstance(_result['result'], FileNotFoundError)
+    assert _result['result'].errno == errno.ENOENT
+    assert _result['result'].strerror == os.strerror(errno.ENOENT)
+
 
 # -----------------------------------------------------------
 # Test CMDs:
