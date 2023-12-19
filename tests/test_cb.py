@@ -239,6 +239,23 @@ def test_act_on_paths_success():
     assert all(entry['success'] for entry in _result)
 
 
+def test_split_results():
+
+    def _action_fn(p):
+        if p == Path("failure"):
+            raise FileNotFoundError()
+        else:
+            return p
+
+    _expected_results = [False, True, True, False, False]
+    _input = map(lambda p: Path("success" if p else "failure"),
+                 _expected_results)
+    _results = cb._act_on_paths(_input, _action_fn)
+    _success, _failures = cb._split_results(_results)
+    assert len(_success) == 2
+    assert len(_failures) == 3
+    assert all([entry['success'] for entry in _success])
+    assert not any([entry['success'] for entry in _failures])
 
 
 # -----------------------------------------------------------
