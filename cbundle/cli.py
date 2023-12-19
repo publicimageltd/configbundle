@@ -391,7 +391,7 @@ def _removable(result_list: list[dict]) -> list[Path]:
 
 def _rm_file_and_backlink(bundled_file: Path) -> None:
     """Remove the bundle file and its associated backlink file.
-    Do not raise an error if no backlink file is found."""
+    Do not raise an error if no file is found."""
     _backlink = _suffix(bundled_file)
     bundled_file.unlink(missing_ok=True)
     _backlink.unlink(missing_ok=True)
