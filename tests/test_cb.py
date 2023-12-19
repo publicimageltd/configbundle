@@ -31,6 +31,12 @@ def _write_dummy_content(file: Path,
         f.writelines(content or ['dummy content', 'two lines'])
 
 
+def _tree(p: Path) -> None:
+    """Print directory tree P.
+    Only for debugging purposes; does not care about IO Errors."""
+    for _line in cb._render_tree(cb._file_tree(p)):
+        print(_line)
+
 # -----------------------------------------------------------
 # FIXTURES
 
@@ -134,8 +140,8 @@ def test_get_repo(monkeypatch, empty_dir):
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
     cb._bundle_file(test_text_file, empty_dir)
-    subprocess.call(["tree", str(test_text_file.parent)])
-    subprocess.call(["tree", str(empty_dir)])
+    _tree(test_text_file.parent)
+    _tree(empty_dir)
     bundled_file = empty_dir / test_text_file.name
     bundled_backlink = cb._suffix(bundled_file)
     assert bundled_backlink.is_symlink()
