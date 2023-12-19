@@ -356,6 +356,7 @@ def _split_results(results: list[dict]) -> tuple[list[dict], list[dict]]:
             list(filterfalse(itemgetter('success'), results)))
 
 
+# NOTE No tests
 def _restore_dir_copy(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (copy) all files bundled in BUNDLE_DIR and subdirectories."""
     def _restore_fn(p: Path) -> Path:
@@ -363,6 +364,7 @@ def _restore_dir_copy(bundle_dir: Path, overwrite: bool) -> list[dict]:
     return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
 
 
+# NOTE No tests
 def _restore_dir_as_link(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (as link) all files bundled in BUNDLE_DIR and its subdirectories."""
     def _restore_fn(p: Path) -> Path:
@@ -370,6 +372,7 @@ def _restore_dir_as_link(bundle_dir: Path, overwrite: bool) -> list[dict]:
     return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
 
 
+# NOTE No tests
 def _restore_dir_dry_run(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (dry run) all files bundled in BUNDLE_DIR and its subdirectories."""
     def _restore_fn(p: Path) -> Path:
@@ -382,7 +385,7 @@ def _removable(result_list: list[dict]) -> list[Path]:
     _successes, _failures = _split_results(result_list)
     _files = list(map(itemgetter("path"), _successes))
     for _path in map(itemgetter("path"), _failures):
-        _files = [x for x in _files if not x == _path and not x == _path.parent]
+        _files = [x for x in _files if x not in _path.parents]
     return _files
 
 

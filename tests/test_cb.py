@@ -5,7 +5,6 @@ import os
 import errno
 import click
 import typer
-import subprocess
 import sys
 sys.path.append('../cbundle')
 from cbundle import cli as cb  # noqa: E402
@@ -256,6 +255,52 @@ def test_split_results():
     assert len(_failures) == 3
     assert all([entry['success'] for entry in _success])
     assert not any([entry['success'] for entry in _failures])
+
+
+def test_removable():
+    def _fail(p):
+        def _action_fn(p):
+            raise FileNotFoundError()
+        return cb._act_on_path(Path(p), _action_fn)
+
+    def _okay(p):
+        def _action_fn(p):
+            return p
+        return cb._act_on_path(Path(p), _action_fn)
+
+    # The files marked with comments should be returned -----------------------#
+    _results = [_okay("/home/user/config/subdir/file"),                        #
+                _okay("/home/user/config/subdir/file.link"),                   #
+                _okay("/home/user/config/subdir"),                             # x
+                _okay("/home/user/config/whatadir"),                           # x
+                _okay("/home/user/config/whatadir/andasubdir"),                # x
+                # This failure blocks the two  subdirs above:
+                _fail("/home/user/config/whatadir/andasubdir/failed.man"),     #
+                _okay("/home/user/config/anotherdir/"),                        #
+                _okay("/home/user/config/anotherdir/file"),                    # x
+                _okay("/home/user/config/anotherdir/subdir/file"),             # x
+                _okay("/home/user/config/anotherdir/subdir/secondsubdirfile"), # x
+                # Due to this failure, "anotherdir"cannot be deleted:
+                _fail("/home/user/config/anotherdir/file.broken.link"),        #
+                _okay("/home/user/config/deletethisdir"),                      # x
+                _okay("/home/user/config/deletethisdir/andthisfile"),          # x
+                # This affects no top directory
+                _fail("/home/user/config/top-level-file-which-fails")]         #
+
+    _expected = [ '/home/user/config/subdir/file',
+                  '/home/user/config/subdir/file.link',
+                  '/home/user/config/subdir',
+                  '/home/user/config/anotherdir/file',
+                  '/home/user/config/anotherdir/subdir/file',
+                  '/home/user/config/anotherdir/subdir/secondsubdirfile',
+                  '/home/user/config/deletethisdir',
+                  '/home/user/config/deletethisdir/andthisfile']
+
+    for _entry in _results:
+        print(_entry['path'], _entry['success'])
+    print()
+    _removable = cb._removable(_results)
+    assert _removable == list(map(Path, _expected))
 
 
 # -----------------------------------------------------------
