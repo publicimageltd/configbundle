@@ -335,16 +335,10 @@ def test_rm_file_and_backlink_3(empty_dir, test_text_file):
     cb._rm_file_and_backlink(_bundled_file)
 
 
-
-
-
-
 # -----------------------------------------------------------
 # Test CMDs:
 
-def test_cmd_add(test_text_file,
-                 empty_repo,
-                 req_bundledir_strings):
+def test_cmd_add(test_text_file, empty_repo, req_bundledir_strings):
     """Test add"""
     _bundle_str = req_bundledir_strings
     cb.add(test_text_file, _bundle_str)
@@ -356,32 +350,47 @@ def test_cmd_add(test_text_file,
         cb.add(test_text_file, _bundle_str)
 
 
-def test_cmd_restore_as_file(test_text_file, empty_repo,
-                             req_bundledir_strings):
-    """Test restoring bundled link as a file."""
-    _bundle_str = req_bundledir_strings
-    _bundle_dir = _add_if_not_none(cb.get_repo(), _bundle_str)
-    _bundle_dir.mkdir(parents=True, exist_ok=True)
-    cb._bundle_file(test_text_file, _bundle_dir)
-    test_text_file.unlink()
-    # Test restoring the bundled file at its original location
-    assert not test_text_file.exists()
-    if _bundle_str:
-        _tmp = Path(_bundle_str) / test_text_file.name #
-    else:
-        _tmp = test_text_file.name
-    _bundle_file_arg = f"{_tmp}"
-    _bundle_file = _bundle_dir / test_text_file.name
-    cb.restore(_bundle_file_arg)
-    assert test_text_file.exists()
-    # Test --no-overwrite
-    with pytest.raises(click.exceptions.Exit):
-        cb.restore(_bundle_file_arg, overwrite=False)
-    # Test --as-link
-    assert not test_text_file.is_symlink()
-    cb.restore(_bundle_file_arg, as_link=True)
-    assert test_text_file.is_symlink()
-    assert os.path.samefile(test_text_file, _bundle_file)
+class TestCMDRestore:
+
+    bundled_file: Path
+    bundle_dir: Path
+    target_file: Path
+    cmd_arg: str
+
+    @pytest.fixture
+    def setup(self, test_text_file, empty_repo, req_bundledir_strings):
+        """Bundle TEST_TEXT_FILE in REQ_BUNDLEDIR_STRINGS, which could be None."""
+        if req_bundledir_strings:
+            _cmd_arg = Path(req_bundledir_strings, test_text_file.name)
+            _bundle_dir = empty_repo / req_bundledir_strings
+        else:
+            _cmd_arg = Path(test_text_file.name)
+            _bundle_dir = empty_repo
+        print(f"_bundle_dir = {_bundle_dir}")
+        _bundle_dir.mkdir(parents=True, exist_ok=True)
+        self.bundled_file = cb._bundle_file(test_text_file, _bundle_dir)
+        self.bundle_dir = _bundle_dir
+        self.target_file = test_text_file
+        self.cmd_arg = str(_cmd_arg)
+
+    def test_cmd_restore_as_file(self, setup):
+        self.target_file.unlink()
+        cb.restore(self.cmd_arg, False, True)
+        assert self.target_file.exists()
+        assert not self.target_file.is_symlink()
+        with pytest.raises(click.exceptions.Exit):
+            cb.restore(self.cmd_arg, False, False)
+
+    def test_cmd_restore_as_link(self, setup):
+        self.target_file.unlink()
+        cb.restore(self.cmd_arg, True, True)
+        assert self.target_file.exists()
+        assert self.target_file.is_symlink()
+        assert os.path.samefile(self.target_file, self.bundled_file)
+        with pytest.raises(click.exceptions.Exit):
+            cb.restore(self.cmd_arg, True, False)
+
+
 
 
 # TODO Rewrite using the new bundlepath arg

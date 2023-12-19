@@ -253,6 +253,7 @@ def get_repo() -> Path:
     return repo_path
 
 
+# REVIEW Add check if bundle_dir exists?
 def _bundle_file(file: Path, bundle_dir: Path) -> Path:
     """Move FILE into BUNDLE_DIR and replace FILE with a link pointing to the bundled file.
     Additionally create a backlink in the bundle dir.
@@ -417,6 +418,7 @@ def add(file: Path,
         raise typer.Exit(1)
 
 
+# NOTE No tests
 @cli.command()
 def copy(bundle_file: str, target_file: Path) -> None:
     """Copy BUNDLE_FILE to TARGET_FILE."""
@@ -437,7 +439,7 @@ def copy(bundle_file: str, target_file: Path) -> None:
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
-                               typer.Option(help="Restore link to the bundled file")] = False,
+                                typer.Option(help="Restore link to the bundled file")] = False,
             overwrite: Annotated[Optional[bool],
                                  typer.Option(help="Overwrite existing target file")] = True,
             remove: Annotated[Optional[bool],
@@ -446,11 +448,10 @@ def restore(bundle_file: str,
     _bundled_file = _get_bundle_file(bundle_file)
     assert_exists(_bundled_file)
     if _bundled_file.is_dir():
-        print(f"{bundle_file} must be a file. To restore whole directories, use unbundle")
+        print(f"{_bundled_file} must be a file. To restore whole directories, use unbundle")
     if remove and as_link:
         print("Option --remove cannot be used when restoring as a link")
         raise typer.Exit(1)
-
     _action: dict
     if as_link:
         _action = {'fn': partial(_restore_as_link, overwrite=overwrite),
@@ -458,11 +459,9 @@ def restore(bundle_file: str,
     else:
         _action = {'fn': partial(_restore_copy, overwrite=overwrite),
                    'msg': "Restored {result}"}
-
     _result = _act_on_path(_bundled_file, _action['fn'])
     if remove:
         _rm_file_and_backlink(_bundled_file)
-
     if _result['success']:
         str.format(_action['msg'], **_result)
     else:
