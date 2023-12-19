@@ -147,6 +147,7 @@ def _get_bundle_file(bundle_file: str) -> Path:
     return get_repo() / _parse_bundle_file(bundle_file)
 
 
+# NOTE No tests
 def _ignore(file: Path) -> bool:
     """Return False when file is a bundle file."""
     res = False
@@ -155,6 +156,7 @@ def _ignore(file: Path) -> bool:
     return res
 
 
+# NOTE No tests
 def _relevant_files(bundle_dir: Path) -> list[Path]:
     """Filter out ignored files in BUNDLE_DIR (recursing)."""
     return list(filter(lambda x: not _ignore(x),
@@ -169,6 +171,7 @@ def _files_first(pathlist: list[Path]) -> list[Path]:
 # -----------------------------------------------------------
 # File and dir functions
 
+# NOTE No tests
 def _file_tree(p: Path) -> dict[str, Any]:
     """Recursively build a tree-like dictionary reflecting the contents of P.
 
@@ -196,6 +199,7 @@ def _file_tree(p: Path) -> dict[str, Any]:
     return _dict
 
 
+# NOTE No tests
 def _render_tree(entry: dict[str, Any],
                  depth: int = 0,
                  tree_char: str = "") -> list[str]:
