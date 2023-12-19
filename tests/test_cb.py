@@ -67,6 +67,14 @@ def empty_repo(empty_dir: Path, monkeypatch) -> Path:
 def req_bundledir_strings(request):
     return request.param
 
+
+# NOTE As oposed to dirs, file argument 'None' makes no sense
+@pytest.fixture(params=["a_file",
+                        "bundledir/another_file",
+                        "bundledir/subdir/whatafile"])
+def req_bundlefile_strings(request):
+    return request.param
+
 # Session-wide fixtures:
 #
 # NONE
@@ -98,6 +106,11 @@ def test_parse_bundle_file():
     # NOTE test only what is not already covered by test_sanitize_bundle_arg
     with pytest.raises(click.exceptions.Exit):
         assert cb._parse_bundle_file("dir/")
+
+
+def test_get_bundle_file(empty_repo, req_bundlefile_strings):
+    assert cb._get_bundle_file(req_bundlefile_strings) == Path(empty_repo) / req_bundlefile_strings
+
 
 
 def test_bundle_file(test_text_file, empty_dir):
