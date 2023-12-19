@@ -2,7 +2,7 @@
 from pathlib import Path
 import os
 import errno
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Any
 from operator import itemgetter
 from itertools import filterfalse
 from functools import partial
@@ -146,12 +146,61 @@ def _files_first(pathlist: list[Path]) -> list[Path]:
 # File and dir functions
 
 # TODO Test manually
+# TODO Catch errors
+def _file_tree(p: Path) -> dict[str, Any]:
+    """Build a tree-like dictionary reflecting the contents of P."""
+    _dict: dict[str, Any] = {'path': p,
+                             'name': p.name}
+    if p.is_dir():
+        _dict['type'] = 'dir'
+        _dict['contents'] = list(map(_file_tree, p.glob('*')))
+    else:
+        _dict['type'] = 'file'
+        if p.is_symlink():
+            _dict['type'] = 'link'
+            _dict['target'] = p.readlink()
+    return _dict
+
+
+def _render_tree(entry: dict[str, Any], depth: int = 0, back_idx: int = 0) -> list[str]:
+    _name = entry['name']
+    _res: list[str]
+    _branch = None
+    match entry['type']:
+        case 'file':
+            _res = [f"{_name}"]
+        case 'link':
+            _res = [f"{_name} -> {entry['target']}"]
+        case 'dir':
+            _res = [f"─{_name}:"]
+            # poor man's mapcat:
+            for _idx, _e in enumerate(entry['contents'], start=-len(entry['contents'])):
+                _res += _render_tree(_e, depth + 1, abs(_idx))
+            # Fixing the branch
+            if back_idx == 0: 
+                _branch = " " # Very first column
+            if back_idx == 1:  #  bottom dir node
+                _branch = " "
+            if len(_res) > 1:
+                _res[0] = f"└{_res[0]}"
+        case _:
+            raise ValueError(entry['type'])
+    if not _branch:
+        if back_idx == 1:
+            _branch = "└"
+        else:
+            _branch = "├"
+    _spacer = f" {back_idx}{_branch}" + " " * depth
+    return [f"{_spacer}{x}" for x in _res]
+
+
+# TODO Test manually
 def _tree(directory):
     print(f"{directory}:")
     for path in sorted(directory.rglob("*")):
         depth = len(path.relative_to(directory).parts)
         spacer = "  " * depth
-        print(f"{spacer}+ {path.name}")
+        print(f"{spacer}├─ {path.name}")
 
 def get_repo() -> Path:
     """Return the path to the bundle repository, possibly creating it on the fly."""
