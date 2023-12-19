@@ -83,8 +83,8 @@ def _rooted_name(path: Path, root: Path | None = None) -> str:
 
 
 def assert_path(p: Path,
-                assertion: Callable[[Path], bool] = Path.exists,
-                msg: str | None = '{p} does not exist',
+                assertion: Callable[[Path], bool],
+                msg: str | None,
                 cancel: bool = True) -> bool:
     """Check if path P satisfies ASSERTION, exiting if CANCEL is True."""
     result = assertion(p)
@@ -94,6 +94,16 @@ def assert_path(p: Path,
         if cancel:
             raise typer.Exit(1)
     return result
+
+
+def assert_exists(p):
+    """Raise an error if P does not exist."""
+    assert_path(p, Path.exists, msg="{p} does not exist")
+
+
+def assert_is_dir(p: Path) -> None:
+    """Raise an error if P is not a directory."""
+    assert_path(p, Path.is_dir, msg="{p} is not a directory")
 
 
 def _sanitize_bundle_arg(bundle_arg: str) -> str:
@@ -380,7 +390,7 @@ def add(file: Path,
         bundle_dir: Annotated[Optional[str],
                               typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
-    assert_path(file)
+    assert_exists(file)
     assert_path(file, Path.is_symlink, "{p} cannot be a symlink")
     _dir = _get_bundle_dir(bundle_dir)
     _dir.mkdir(parents=True, exist_ok=True)
@@ -395,7 +405,7 @@ def add(file: Path,
 def copy(bundle_file: str, target_file: Path) -> None:
     """Copy BUNDLE_FILE to TARGET_FILE."""
     _bundled_file = _get_bundle_file(bundle_file)
-    assert_path(_bundled_file)
+    assert_exists(_bundled_file)
     if target_file.exists():
         typer.confirm(f"File {target_file} already exists, overwrite? ",
                       default=False, abort=True)
@@ -418,7 +428,7 @@ def restore(bundle_file: str,
                               typer.Option(help="Delete bundled file after restoring target")] = False) -> None:
     """Copy BUNDLE_FILE to the location defined by its associated .link file."""
     _bundled_file = _get_bundle_file(bundle_file)
-    assert_path(_bundled_file)
+    assert_exists(_bundled_file)
     if _bundled_file.is_dir():
         print(f"{bundle_file} must be a file. To restore whole directories, use unbundle")
     if remove and as_link:
@@ -453,7 +463,7 @@ def rm(bundle_file: str,
                                      help="Do not ask for confirmation")] = False) -> None:
     """Remove BUNDLE_FILE and its associated link."""
     _bundled_file = _get_bundle_file(bundle_file)
-    assert_path(_bundled_file)
+    assert_exists(_bundled_file)
     _backlink_file = _suffix(_bundled_file)
     # Create explicit warning if --force is not set:
     if not force:
@@ -482,7 +492,7 @@ def rmdir(bundle_dir: str,
                                         help="Delete non-empty dirs")] = False) -> None:
     """Delete bundle directory BUNDLE_DIR and all of its subdirectories."""
     _dir = _get_bundle_dir(bundle_dir)
-    assert_path(_dir)
+    assert_exists(_dir)
     if _dir.glob("*") and not force:
         _dir_name = _rooted_name(_dir)
         print(f"{_dir_name} is not empty. Use --force to delete anyways")
@@ -533,10 +543,8 @@ def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     """Display the contents of BUNDLE_DIR.
     If no bundle dir is given, list the repository root."""
     _dir = _get_bundle_dir(bundle_dir)
-    assert_path(_dir)
-    if not _dir.is_dir():
-        print(f"{_dir} is not a directory")
-        raise typer.Exit(1)
+    assert_exists(_dir)
+    assert_is_dir(_dir)
     try:
         _list = _file_tree(_dir)
     except OSError as err:
