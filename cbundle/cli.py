@@ -10,7 +10,6 @@ from typing_extensions import Annotated
 import sys
 import re
 import shutil
-import subprocess
 # Hack to disable rich output
 sys.modules['rich'] = None  # type: ignore
 import typer  # noqa: E402
@@ -228,14 +227,6 @@ def _render_tree(entry: dict[str, Any],
             raise ValueError(entry['type'])
     return [str(x) for x in _res]
 
-
-# TODO Test manually
-def _tree(directory):
-    print(f"{directory}:")
-    for path in sorted(directory.rglob("*")):
-        depth = len(path.relative_to(directory).parts)
-        spacer = "  " * depth
-        print(f"{spacer}├─ {path.name}")
 
 def get_repo() -> Path:
     """Return the path to the bundle repository, possibly creating it on the fly."""
@@ -577,11 +568,13 @@ def ls(bundle_dir: Annotated[Optional[str], typer.Argument()] = None) -> None:
     if not _dir.is_dir():
         print(f"{_dir} is not a directory")
         raise typer.Exit(1)
-    cmd = ["tree", str(_dir)]
-    if not shutil.which("tree"):
-        print("Binary tree not available")
+    try:
+        _list = _file_tree(_dir)
+    except OSError as err:
+        print(err)
         raise typer.Exit(1)
-    subprocess.call(cmd)
+    for _line in _render_tree(_list):
+        print(_line)
 
 
 if __name__ == '__main__':
