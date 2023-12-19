@@ -139,29 +139,37 @@ def test_get_repo(monkeypatch, empty_dir):
 
 def test_bundle_file(test_text_file, empty_dir):
     assert not test_text_file.is_symlink()
-    cb._bundle_file(test_text_file, empty_dir)
+    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     _tree(test_text_file.parent)
     _tree(empty_dir)
-    bundled_file = empty_dir / test_text_file.name
-    bundled_backlink = cb._suffix(bundled_file)
-    assert bundled_backlink.is_symlink()
-    assert os.path.samefile(bundled_backlink, test_text_file)
+    _bundled_backlink = cb._suffix(_bundled_file)
+    assert _bundled_backlink.is_symlink()
+    assert os.path.samefile(_bundled_backlink, test_text_file)
     assert test_text_file.is_symlink()
-    assert test_text_file.resolve() == bundled_file
+    assert test_text_file.resolve() == _bundled_file
     with pytest.raises(cb.FileAlreadyBundledError):
-        cb._bundle_file(bundled_file, empty_dir)
+        cb._bundle_file(_bundled_file, empty_dir)
 
 
 def test_get_associated_target(test_text_file, empty_dir):
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     assert cb._get_associated_target(_bundled_file) == test_text_file
+    _unbundled_file = empty_dir / "iamnotbundled"
+    with pytest.raises(cb.NoBacklinkError):
+        cb._get_associated_target(_unbundled_file)
 
 
 def test_restore_copy_overwrite(test_text_file, empty_dir):
+    with open(test_text_file, 'r') as f:
+        contents = f.read()
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     assert test_text_file.is_symlink()
     cb._restore_copy(_bundled_file, True)
     assert not test_text_file.is_symlink()
+    with open(test_text_file, 'r') as f:
+        copied_contents = f.read()
+    assert contents == copied_contents
+
 
 def test_restore_copy_no_overwrite(test_text_file, empty_dir):
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
@@ -179,6 +187,7 @@ def test_restore_as_link_overwrite(test_text_file, empty_dir):
     cb._restore_as_link(_bundled_file, True)
     assert test_text_file.is_symlink()
 
+
 def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
     _bundled_file = cb._bundle_file(test_text_file, empty_dir)
     test_text_file.unlink()
@@ -189,18 +198,10 @@ def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
         cb._restore_as_link(_bundled_file, False)
 
 
-# def test_restore_loop(empty_dir):
-#     filelist = ["dir1/file1",
-#                 "dir2/aa",
-#                 "dir2/bb",
-#                 "dir3/",
-#                 "dir3/.gitignore",
-#                 "dir4/a_1_a",
-#                 "dir4/a_1_a.link",
-#                 "dir4/b_1_b",
-#                 "dir5/"
-#                 "a.link"]
 
+
+
+        
 
 # -----------------------------------------------------------
 # Test CMDs:
