@@ -35,10 +35,6 @@ class InvalidBundleSpecificationError(Exception):
     """Bundle Specification is invalid (empty or otherwise flawed)."""
 
 
-class FileIsSymlinkError(Exception):
-    """File is a symlink, but should not be one.."""
-
-
 class FileAlreadyBundledError(FileExistsError):
     """File already exists in bundle."""
 
@@ -237,51 +233,20 @@ def get_repo() -> Path:
     return repo_path
 
 
-def _move(file: Path, target_path: Path) -> Path:
-    """Move FILE, returning the new file as Path."""
-    target_path = target_path.absolute()
-    if target_path.is_dir():
-        target_file = target_path / file.name
-    else:
-        target_file = target_path
-    shutil.move(str(file), str(target_file))
-    return Path(target_file)
-
-
-def _copy(file: Path, target_path: Path) -> Path:
-    """Copy FILE, returning the destination as Path.
-    If TARGET_PATH is a directory, copy the file into this directory.
-    If TARGET_PATH is a file, use this file name as destination.
-    If FILE is a symlink, create a copy of the file FILE
-    is referring to."""
-    target_path = target_path.absolute()
-    if target_path.is_dir():
-        target_file = target_path / file.name
-    else:
-        target_file = target_path
-    return shutil.copy2(f"{file}", f"{target_file}")
-
-
-def _create_backlink(bundle_file: Path, target_file: Path) -> None:
-    """Create a symlink file associated with BUNDLE_FILE, pointing to TARGET_FILE."""
-    link_file = _suffix(bundle_file)
-    link_file.symlink_to(target_file.absolute())
-
-
 def _bundle_file(file: Path, bundle_dir: Path) -> Path:
     """Move FILE into BUNDLE_DIR and replace FILE with a link pointing to the bundled file.
     Additionally create a backlink in the bundle dir.
-    Throw an error if bundled file already exists, or if FILE is a symlink.
+    Throw an error if bundled file or backlink already exist.
     Return the bundled file."""
-    if file.is_symlink():
-        raise FileIsSymlinkError(f"File {file} cannot be a symlink")
-    _target_file = bundle_dir.absolute() / file.name
-    if _target_file.exists():
-        raise FileAlreadyBundledError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
-    _bundled_file = _move(file, bundle_dir)
-    if _bundled_file != _target_file:
-        print(f"Warning: {_bundled_file} is not equal {_target_file}")
-    _create_backlink(_bundled_file, file)
+    _bundled_file = bundle_dir.absolute() / file.name
+    _link_file = _suffix(_bundled_file)
+    # FIXME These assertions should be somewhere else
+    if _bundled_file.exists():
+        raise FileAlreadyBundledError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_bundled_file}")
+    if _link_file.exists():
+        raise FileAlreadyBundledError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_link_file}")
+    shutil.move(str(file), str(_bundled_file))
+    _link_file.symlink_to(file.absolute())
     file.symlink_to(_bundled_file)
     return _bundled_file
 
@@ -310,7 +275,7 @@ def _restore_copy(bundled_file: Path, overwrite: bool) -> Path:
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), f"{_target_file}")
     # Delete target to avoid symlink looping
     _target_file.unlink(missing_ok=True)
-    _copy(bundled_file, _target_file)
+    shutil.copy2(str(bundled_file), str(_target_file))
     return _target_file
 
 
@@ -416,11 +381,12 @@ def add(file: Path,
                               typer.Argument(help="Bundle directory")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_path(file)
+    assert_path(file, Path.is_symlink, "{p} cannot be a symlink")
     _dir = _get_bundle_dir(bundle_dir)
     _dir.mkdir(parents=True, exist_ok=True)
     try:
         _bundle_file(file, _dir)
-    except (FileAlreadyBundledError, FileIsSymlinkError) as err:
+    except FileAlreadyBundledError as err:
         print(err)
         raise typer.Exit(1)
 
@@ -428,13 +394,16 @@ def add(file: Path,
 @cli.command()
 def copy(bundle_file: str, target_file: Path) -> None:
     """Copy BUNDLE_FILE to TARGET_FILE."""
+    _bundled_file = _get_bundle_file(bundle_file)
+    assert_path(_bundled_file)
     if target_file.exists():
         typer.confirm(f"File {target_file} already exists, overwrite? ",
                       default=False, abort=True)
-
-    _bundled_file = _get_bundle_file(bundle_file)
-    assert_path(_bundled_file)
-    _copy(_bundled_file, target_file)
+    try:
+        shutil.copy2(str(_bundled_file), str(target_file))
+    except OSError as err:
+        print(err)
+        raise typer.Exit(1)
 
 
 # TODO Check tests
