@@ -158,10 +158,20 @@ def _files_first(pathlist: list[Path]) -> list[Path]:
 # -----------------------------------------------------------
 # File and dir functions
 
-# TODO Test manually
-# TODO Catch errors
 def _file_tree(p: Path) -> dict[str, Any]:
-    """Build a tree-like dictionary reflecting the contents of P."""
+    """Recursively build a tree-like dictionary reflecting the contents of P.
+
+    Return a dictionary with the following structure:
+
+       {'path': Pathobject,
+        'name': Path.name,
+        'type': one of 'link', 'file' or 'dir'}
+
+    Additionally, depending on the 'type', also add the following keys:
+
+        'contents': list of entries of that directory
+        'target': target of the link
+    """
     _dict: dict[str, Any] = {'path': p,
                              'name': p.name}
     if p.is_dir():
@@ -175,36 +185,48 @@ def _file_tree(p: Path) -> dict[str, Any]:
     return _dict
 
 
-def _render_tree(entry: dict[str, Any], depth: int = 0, back_idx: int = 0) -> list[str]:
-    _name = entry['name']
+def _render_tree(entry: dict[str, Any],
+                 depth: int = 0,
+                 tree_char: str = "") -> list[str]:
+    """Recursively render a directory tree stored in ENTRY.
+    Return a list of strings representing ENTRY and, if given,
+    its subdirectories.
+
+    Typical usage: _render_tree(_file_tree(Path("/home/user/")))
+
+    DEPTH and TREE_CHAR are internal arguments for recursion."""
+    _name = f"{tree_char}─{entry['name']}"
     _res: list[str]
-    _branch = None
     match entry['type']:
         case 'file':
-            _res = [f"{_name}"]
+            _res = [_name]
         case 'link':
-            _res = [f"{_name} -> {entry['target']}"]
+            _res = [ _name + f" -> {entry['target']}"]
         case 'dir':
-            _res = [f"─{_name}:"]
-            # poor man's mapcat:
-            for _idx, _e in enumerate(entry['contents'], start=-len(entry['contents'])):
-                _res += _render_tree(_e, depth + 1, abs(_idx))
-            # Fixing the branch
-            if back_idx == 0: 
-                _branch = " " # Very first column
-            if back_idx == 1:  #  bottom dir node
-                _branch = " "
-            if len(_res) > 1:
-                _res[0] = f"└{_res[0]}"
+            _res = [ _name + "/"]
+            if entry['contents']:
+                # Recursion hack: We can't know beforehand if we are
+                # the last subtree, so we change the drawing after the
+                # fact.  If the argument passed to tree_char below
+                # changes (e.g. some spaces after f"{_char}"), this
+                # hack has to be adapted accordingly.
+                if depth > 0:
+                    tree_char = tree_char[:-1] + "│"
+                # Construct array (└ or ├, ├ ..., └)
+                _n = len(entry['contents'])
+                if _n == 1:
+                    _tree_chars = ["└"]
+                else:
+                    _first_char = "├"
+                    _middle = ["├"] * (_n - 2) # this can be an empty list
+                    _last_char = "└"
+                    _tree_chars = [_first_char] + _middle + [_last_char]
+                # poor man's mapcat:
+                for _e, _char in zip(entry['contents'], _tree_chars):
+                    _res += _render_tree(_e, depth + 1, f"{tree_char} {_char}")
         case _:
             raise ValueError(entry['type'])
-    if not _branch:
-        if back_idx == 1:
-            _branch = "└"
-        else:
-            _branch = "├"
-    _spacer = f" {back_idx}{_branch}" + " " * depth
-    return [f"{_spacer}{x}" for x in _res]
+    return [str(x) for x in _res]
 
 
 # TODO Test manually
