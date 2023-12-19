@@ -338,16 +338,29 @@ def test_rm_file_and_backlink_3(empty_dir, test_text_file):
 # -----------------------------------------------------------
 # Test CMDs:
 
-def test_cmd_add(test_text_file, empty_repo, req_bundledir_strings):
-    """Test add"""
-    _bundle_str = req_bundledir_strings
-    cb.add(test_text_file, _bundle_str)
-    _dir = _add_if_not_none(cb.get_repo(), _bundle_str)
-    _repo_file = _dir / test_text_file.name
-    assert _dir.exists()
-    assert _repo_file.exists()
-    with pytest.raises(click.exceptions.Exit):
-        cb.add(test_text_file, _bundle_str)
+class TestCMDAdd:
+
+    cmd_bundle_dir: str | None
+    bundled_file: Path
+    file: Path
+    
+    @pytest.fixture
+    def setup(self, test_text_file, empty_repo, req_bundledir_strings):
+        _dir = _add_if_not_none(empty_repo, req_bundledir_strings)
+        _bundled_file = _dir / test_text_file.name
+        self.bundled_file = _bundled_file
+        self.cmd_bundle_dir = req_bundledir_strings
+        self.file = test_text_file
+
+    def test_add(self, setup):
+        cb.add(self.file, self.cmd_bundle_dir)
+        assert self.bundled_file.exists()
+
+    def test_add_twice(self, setup):
+        cb.add(self.file, self.cmd_bundle_dir)
+        assert self.bundled_file.exists()
+        with pytest.raises(click.exceptions.Exit):
+            cb.add(self.file, self.cmd_bundle_dir)
 
 
 class TestCMDRestore:
