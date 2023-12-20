@@ -406,17 +406,17 @@ class TestCMDRestore:
 
     def test_cmd_restore_as_file(self, setup):
         # First overwrite target_file
-        cb.restore(self.cmd_arg, False, True, False)
+        cb.restore(self.cmd_arg, as_link=False, overwrite=True, remove=False)
         assert self.target_file.exists()
         assert not self.target_file.is_symlink()
         # Now raise error
         with pytest.raises(click.exceptions.Exit):
-            cb.restore(self.cmd_arg, False, False, False)
+            cb.restore(self.cmd_arg, as_link=False, overwrite=False, remove=False)
 
 
     def test_cmd_restore_remove(self, setup):
         # Overwrite target and remove bundled file:
-        cb.restore(self.cmd_arg, False, True, True)
+        cb.restore(self.cmd_arg, as_link=False, overwrite=True, remove=True)
         assert self.target_file.exists()
         assert not self.target_file.is_symlink()
         assert not self.bundled_file.exists()
@@ -426,13 +426,13 @@ class TestCMDRestore:
     def test_cmd_restore_as_link(self, setup):
         # Overwrite
         self.target_file.unlink()
-        cb.restore(self.cmd_arg, True, True, False)
+        cb.restore(self.cmd_arg, as_link=True, overwrite=True, remove=False)
         assert self.target_file.exists()
         assert self.target_file.is_symlink()
         assert os.path.samefile(self.target_file, self.bundled_file)
         # Raise error when overwriting
         with pytest.raises(click.exceptions.Exit):
-            cb.restore(self.cmd_arg, True, False, False)
+            cb.restore(self.cmd_arg, as_link=True, overwrite=False, remove=False)
 
 
 class TestCMDRm:
