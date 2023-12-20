@@ -490,30 +490,22 @@ class TestCMDRm:
         assert result.exit_code == 1
         assert self.bundled_file.exists()
 
-    def test_warn_backlink(self, setup):
+    def test_warn_broken_target(self, setup):
+        _target_file = cb._get_associated_target(self.bundled_file)
         result = runner.invoke(cb.cli, "rm " + self.cmd_bundle_file,
                                input="n\n")
         print(result.output)
         assert result.exit_code == 1
-        assert str(self.bundled_file) in result.output
+        assert str(cb._home_name(_target_file)) in result.output
 
-
-
-# TODO Rewrite using the new bundlepath arg
-# def test_cmd_rm(empty_bundle):
-#     """Test rm"""
-#     def write_test_file(filename):
-#         with open(filename, 'w') as file:
-#             file.writelines(['dummy content', 'two lines'])
-
-#     testfile = empty_bundle / "testfile"
-#     linkfile = cb._suffix(testfile)
-#     write_test_file(empty_bundle / "testfile")
-#     linkfile.symlink_to(testfile)
-
-#     cb.rm(IGNORE_BUNDLE_ARG, testfile)
-#     assert not testfile.exists()
-#     assert not linkfile.exists()
+    def test_no_warn_broken_target(self, setup):
+        _target_file = cb._get_associated_target(self.bundled_file)
+        _target_file.unlink()
+        result = runner.invoke(cb.cli, "rm " + self.cmd_bundle_file,
+                               input="n\n")
+        print(result.output)
+        assert result.exit_code == 1
+        assert str(cb._home_name(_target_file)) not in result.output
 
 
 # TODO Rewrite using the new bundlepath arg
