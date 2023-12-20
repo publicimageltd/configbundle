@@ -38,6 +38,9 @@ class FileAlreadyBundledError(FileExistsError):
     """File already exists in bundle."""
 
 
+class PathsNotRelativeError(ValueError):
+    """Paths are not relative to each other"""
+    
 # -----------------------------------------------------------
 # Utilities
 
@@ -65,20 +68,41 @@ def _is_subpath_of(sub: Path, root: Path) -> bool:
         return False
 
 
-def _rooted_name(path: Path, root: Path | None = None) -> str:
-    """Return path as a path relative to ROOT, if possible."""
-    _root_str = ""
-    if not root:
-        _root = get_repo()
-        _root_str = "bundle path "
-    else:
-        _root = root
-        if root == Path.home():
-            _root_str = "~/"
-    _res = path
+def _relative_path(path: Path, root: Path | None = None) -> Path:
+    """Return a path relative to ROOT.
+    If PATH is not relative to ROOT, raise an Error.
+    Both paths have to be absolute paths."""
+    _root = root or get_repo()
+    if not _root.is_absolute() or not path.is_absolute():
+        raise ValueError("Both PATH and ROOT have to be absolute paths")
+    print(f"_relativ_path: Checking if {path} is relative to {_root}")
     if path.is_relative_to(_root):
         _res = path.relative_to(_root)
-    return f"{_root_str}{_res}"
+    else:
+        raise PathsNotRelativeError("PATH is not relative to ROOT")
+    return _res
+
+
+def _relative_name(path: Path, root: Path, prefix: str) -> str:
+    """Return a string representing PATH relative to ROOT, with PREFIX added.
+    If PATH is not relative to ROOT, return it as an absolute path without PREFIX"""
+    try:
+        _res = f"{prefix}{_relative_path(path, root)}"
+    except PathsNotRelativeError:
+        _res = str(path)
+    return _res
+
+
+def _repo_name(path: Path) -> str:
+    """Return a string representing absolute PATH relative to the repository.
+    If PATH is not relative to the repository, return the absolute path."""
+    return _relative_name(path, get_repo(), "/")
+
+
+def _home_name(path: Path) -> str:
+    """Return a string representing absolute PATH relative to the user's home directory.
+    If PATH is not relative to the home directory, return the absolute path"""
+    return _relative_name(path, Path.home(), "~/")
 
 
 def assert_path(p: Path,
@@ -120,12 +144,12 @@ def _sanitize_bundle_arg(bundle_arg: str) -> str:
 
 
 def _parse_bundle_dir(bundle_dir: str) -> Path:
-    """Parse BUNDLE_DIR, returning a directory path."""
+    """Parse BUNDLE_DIR, returning a relative path."""
     return Path(_sanitize_bundle_arg(bundle_dir))
 
 
 def _parse_bundle_file(bundle_file: str) -> Path:
-    """Parse BUNDLE_FILE, returning a file path.
+    """Parse BUNDLE_FILE, returning a relative path.
     A trailing slash will throw an error."""
     _arg = _sanitize_bundle_arg(bundle_file)
     if _arg.endswith("/"):
@@ -135,7 +159,7 @@ def _parse_bundle_file(bundle_file: str) -> Path:
 
 
 def _get_bundle_dir(bundle_dir: str | None) -> Path:
-    """Return BUNDLE_DIR within the repository."""
+    """Return BUNDLE_DIR as an absolute path."""
     _dir = get_repo()
     if bundle_dir:
         _dir = _dir / _parse_bundle_dir(bundle_dir)
@@ -143,7 +167,7 @@ def _get_bundle_dir(bundle_dir: str | None) -> Path:
 
 
 def _get_bundle_file(bundle_file: str) -> Path:
-    """Return BUNDLE_FILE within the repository."""
+    """Return BUNDLE_FILE as an absolute path."""
     return get_repo() / _parse_bundle_file(bundle_file)
 
 
@@ -405,7 +429,7 @@ def _rm_file_and_backlink(bundled_file: Path) -> None:
 @cli.command()
 def add(file: Path,
         bundle_dir: Annotated[Optional[str],
-                              typer.Argument(help="Bundle directory")] = None) -> None:
+                              typer.Argument(help="Bundle directory path (relative to the repository)")] = None) -> None:
     "Add FILE to BUNDLE_DIR, replacing it with a link to the bundled file."
     assert_exists(file)
     assert_is_no_symlink(file)
@@ -490,8 +514,8 @@ def rm(bundle_file: str,
         except NoBacklinkError:
             _target_file = None
         if _target_file and _target_file.is_symlink():
-            _target_warning = f" This will break the link stored in {_rooted_name(_target_file, Path.home())}"
-        msg = f"Delete {_rooted_name(_bundled_file)}{_backlink_warning}?{_target_warning}"
+            _target_warning = f" This will break the link stored in {_home_name(_target_file)}"
+        msg = f"Delete {_repo_name(_bundled_file)}{_backlink_warning}?{_target_warning}"
         typer.confirm(msg, default=False, abort=True)
     _backlink_file.unlink(missing_ok=True)
     _bundled_file.unlink()
@@ -508,8 +532,7 @@ def rmdir(bundle_dir: str,
     _dir = _get_bundle_dir(bundle_dir)
     assert_exists(_dir)
     if _dir.glob("*") and not force:
-        _dir_name = _rooted_name(_dir)
-        print(f"{_dir_name} is not empty. Use --force to delete anyways")
+        print(f"{_repo_name(_dir)} is not empty. Use --force to delete anyways")
         raise typer.Exit(1)
     shutil.rmtree(str(_dir))
 

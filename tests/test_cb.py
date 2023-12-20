@@ -1,5 +1,7 @@
 from __future__ import absolute_import
 from typing import Any
+from typer.testing import CliRunner
+from pathlib import Path
 import pytest
 import os
 import errno
@@ -7,8 +9,9 @@ import click
 import typer
 import sys
 sys.path.append('../cbundle')
-from cbundle import cli as cb  # noqa: E402
-from pathlib import Path  # noqa: E402
+from cbundle import cli as cb # noqa: E402
+
+runner = CliRunner()
 
 # -----------------------------------------------------------
 # Utilities
@@ -113,6 +116,28 @@ def test_parse_bundle_file():
     # NOTE test only what is not already covered by test_sanitize_bundle_arg
     with pytest.raises(click.exceptions.Exit):
         assert cb._parse_bundle_file("dir/")
+
+class TestRelativePath:
+
+    def test_path_with_default(self, empty_repo, req_bundlefile_strings):
+        p = Path(req_bundlefile_strings)
+        assert cb._relative_path(empty_repo / p) == p
+
+    def test_path_with_home(self, req_bundlefile_strings):
+        p = Path(req_bundlefile_strings)
+        assert cb._relative_path(Path.home() / p, Path.home()) == p
+
+    def test_invalid_arguments(self):
+        with pytest.raises(ValueError):
+            cb._relative_path(Path("is_relative"))
+
+    def test_not_relative(self):
+        with pytest.raises(cb.PathsNotRelativeError):
+            cb._relative_path(Path("/absolute/path/1"), Path("/this/path/is/not/relative"))
+
+    def test_home_name(self, req_bundlefile_strings):
+        p = Path.home() / req_bundlefile_strings
+        assert cb._home_name(p) == f"~/{req_bundlefile_strings}"
 
 
 def test_get_bundle_file(empty_repo, req_bundlefile_strings):
@@ -440,7 +465,7 @@ class TestCMDRm:
     bundled_file: Path
     backlink_file: Path
     cmd_bundle_file: str
-    
+
     @pytest.fixture
     def setup(self, empty_repo, test_file):
         self.bundled_file = cb._bundle_file(test_file, empty_repo)
@@ -457,6 +482,21 @@ class TestCMDRm:
     def test_file_not_found(self, setup):
         with pytest.raises(click.exceptions.Exit):
             cb.rm("non-existing-file", force=True)
+
+    def test_ask_user_per_default(self, setup):
+        result = runner.invoke(cb.cli, "rm " + self.cmd_bundle_file,
+                               input="n\n")
+        print(result.output)
+        assert result.exit_code == 1
+        assert self.bundled_file.exists()
+
+    def test_warn_backlink(self, setup):
+        result = runner.invoke(cb.cli, "rm " + self.cmd_bundle_file,
+                               input="n\n")
+        print(result.output)
+        assert result.exit_code == 1
+        assert str(self.bundled_file) in result.output
+
 
 
 # TODO Rewrite using the new bundlepath arg
