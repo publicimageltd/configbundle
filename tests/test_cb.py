@@ -159,43 +159,56 @@ def test_get_associated_target(test_text_file, empty_dir):
         cb._get_associated_target(_unbundled_file)
 
 
-def test_restore_copy_overwrite(test_text_file, empty_dir):
-    with open(test_text_file, 'r') as f:
-        contents = f.read()
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    assert test_text_file.is_symlink()
-    cb._restore_copy(_bundled_file, True)
-    assert not test_text_file.is_symlink()
-    with open(test_text_file, 'r') as f:
-        copied_contents = f.read()
-    assert contents == copied_contents
+class TestRestoreFNs:
+
+    bundled_file: Path
+    backlink: Path
+    target_file: Path
+
+    @pytest.fixture
+    def setup(self, test_text_file, empty_dir):
+        self.bundled_file = cb._bundle_file(test_text_file, empty_dir)
+        self.target_file = test_text_file
+        self.backlink = cb._suffix(self.bundled_file)
+        assert self.target_file.is_symlink()
+        assert self.bundled_file.exists()
+        assert self.backlink.exists()
+        assert self.backlink.is_symlink()
 
 
-def test_restore_copy_no_overwrite(test_text_file, empty_dir):
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    assert test_text_file.is_symlink()
-    with pytest.raises(FileExistsError):
-        cb._restore_copy(_bundled_file, False)
+    def test_copy_overwrite(self, setup):
+        with open(self.bundled_file, 'r') as f:
+            contents = f.read()
+        cb._restore_copy(self.bundled_file, overwrite=True)
+        assert not self.target_file.is_symlink()
+        with open(self.target_file, 'r') as f:
+            copied_contents = f.read()
+        assert contents == copied_contents
 
 
-def test_restore_as_link_overwrite(test_text_file, empty_dir):
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    test_text_file.unlink()
-    _write_dummy_content(test_text_file)
-    assert test_text_file.exists()
-    assert not test_text_file.is_symlink()
-    cb._restore_as_link(_bundled_file, True)
-    assert test_text_file.is_symlink()
+    def test_copy_no_overwrite(self, setup):
+        with pytest.raises(FileExistsError):
+            cb._restore_copy(self.bundled_file, overwrite=False)
 
 
-def test_restore_as_link_no_overwrite(test_text_file, empty_dir):
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    test_text_file.unlink()
-    _write_dummy_content(test_text_file)
-    assert test_text_file.exists()
-    assert not test_text_file.is_symlink()
-    with pytest.raises(FileExistsError):
-        cb._restore_as_link(_bundled_file, False)
+    def test_restore_as_link_overwrite(self, setup):
+        # Replace link with regular file
+        self.target_file.unlink()
+        _write_dummy_content(self.target_file)
+        assert self.target_file.exists()
+        # And restore bundled file 'over' it:
+        cb._restore_as_link(self.bundled_file, overwrite=True)
+        assert self.target_file.is_symlink()
+
+
+    def test_restore_as_link_no_overwrite(self, setup):
+        # Replace link with regular file
+        self.target_file.unlink()
+        _write_dummy_content(self.target_file)
+        assert self.target_file.exists()
+        # And try to restore bundled file 'over' it:
+        with pytest.raises(FileExistsError):
+            cb._restore_as_link(self.bundled_file, overwrite=False)
 
 
 # AH, I love testing pure functions!
