@@ -75,7 +75,6 @@ def _relative_path(path: Path, root: Path | None = None) -> Path:
     _root = root or get_repo()
     if not _root.is_absolute() or not path.is_absolute():
         raise ValueError("Both PATH and ROOT have to be absolute paths")
-    print(f"_relativ_path: Checking if {path} is relative to {_root}")
     if path.is_relative_to(_root):
         _res = path.relative_to(_root)
     else:
@@ -521,8 +520,6 @@ def rm(bundle_file: str,
     _bundled_file.unlink()
 
 
-# TODO Test manually
-# TODO Write automated test
 @cli.command()
 def rmdir(bundle_dir: str,
           force: Annotated[Optional[bool],
@@ -531,7 +528,7 @@ def rmdir(bundle_dir: str,
     """Delete bundle directory BUNDLE_DIR and all of its subdirectories."""
     _dir = _get_bundle_dir(bundle_dir)
     assert_exists(_dir)
-    if _dir.glob("*") and not force:
+    if list(_dir.glob("*")) and not force:
         print(f"{_repo_name(_dir)} is not empty. Use --force to delete anyways")
         raise typer.Exit(1)
     shutil.rmtree(str(_dir))

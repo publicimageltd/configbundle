@@ -508,6 +508,47 @@ class TestCMDRm:
         assert str(cb._home_name(_target_file)) not in result.output
 
 
+class TestCMDRmdir:
+
+    bundled_file: Path
+    bundle_dir: Path
+    cmd_bundle_dir: str
+
+    @pytest.fixture
+    def setup(self, empty_repo, test_file):
+        self.cmd_bundle_dir = "a_dir"
+        self.bundle_dir = empty_repo / self.cmd_bundle_dir
+        self.bundle_dir.mkdir(parents=True, exist_ok=True)
+        self.bundled_file = cb._bundle_file(test_file, self.bundle_dir)
+        assert self.bundle_dir.exists()
+
+    def test_regular_rmdir(self, setup):
+        cb.rmdir(self.cmd_bundle_dir, True)
+        assert not self.bundle_dir.exists()
+
+    def test_ignore_warning_if_force(self, setup):
+        result = runner.invoke(cb.cli, ["rmdir", self.cmd_bundle_dir, "--force"])
+        assert result.exit_code == 0
+        assert not self.bundle_dir.exists()
+
+    def test_warn_if_not_force(self, setup):
+        result = runner.invoke(cb.cli, ["rmdir", self.cmd_bundle_dir],
+                               input="n\n")
+        assert result.exit_code == 1
+        assert self.bundle_dir.exists()
+
+    def test_do_not_warn_if_empty(self, setup):
+        self.bundled_file.unlink()
+        cb._suffix(self.bundled_file).unlink()
+        _tree(self.bundle_dir)
+        result = runner.invoke(cb.cli, ["rmdir", self.cmd_bundle_dir])
+        print(result.output)
+        assert result.exit_code == 0
+        assert not self.bundle_dir.exists()
+    
+        
+
+
 # TODO Rewrite using the new bundlepath arg
 # def test_cmd_rmdir(empty_dir, monkeypatch):
 #     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
