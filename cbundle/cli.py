@@ -434,12 +434,11 @@ def copy(bundle_file: str, target_file: Path) -> None:
         raise typer.Exit(1)
 
 
-# TODO Check tests
 # FIXME Instead of calling remove explicitly, why not "chain on success"?
 @cli.command()
 def restore(bundle_file: str,
             as_link: Annotated[Optional[bool],
-                                typer.Option(help="Restore link to the bundled file")] = False,
+                               typer.Option(help="Restore link to the bundled file")] = False,
             overwrite: Annotated[Optional[bool],
                                  typer.Option(help="Overwrite existing target file")] = True,
             remove: Annotated[Optional[bool],

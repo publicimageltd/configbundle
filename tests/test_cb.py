@@ -303,36 +303,32 @@ def test_removable():
     assert _removable == list(map(Path, _expected))
 
 
-def test_rm_file_and_backlink(empty_dir, test_text_file):
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    _backlink = cb._suffix(_bundled_file)
-    assert _bundled_file.exists()
-    assert _backlink.is_symlink()
-    cb._rm_file_and_backlink(_bundled_file)
-    assert not _bundled_file.exists()
-    assert not _backlink.is_symlink()
+class TestRMFileAndBacklink:
 
+    bundled_file: Path
+    backlink: Path
 
-def test_rm_file_and_backlink_2(empty_dir, test_text_file):
-    """Test if there is no error even though backlink does not exist."""
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    _backlink = cb._suffix(_bundled_file)
-    assert _bundled_file.exists()
-    assert _backlink.is_symlink()
-    _backlink.unlink()
-    cb._rm_file_and_backlink(_bundled_file)
-    assert not _bundled_file.exists()
-    assert not _backlink.is_symlink()
+    @pytest.fixture
+    def setup(self, empty_dir, test_text_file):
+        self.bundled_file = cb._bundle_file(test_text_file, empty_dir)
+        self.backlink = cb._suffix(self.bundled_file)
+        assert self.bundled_file.exists()
+        assert self.backlink.is_symlink()
 
+    def test_delete_files(self, setup):
+        cb._rm_file_and_backlink(self.bundled_file)
+        assert not self.bundled_file.exists()
+        assert not self.backlink.exists()
 
-def test_rm_file_and_backlink_3(empty_dir, test_text_file):
-    """Expect error because bundled file does not exist."""
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    _backlink = cb._suffix(_bundled_file)
-    assert _bundled_file.exists()
-    assert _backlink.is_symlink()
-    _bundled_file.unlink()
-    cb._rm_file_and_backlink(_bundled_file)
+    def test_no_error_if_file_missing(self, setup):
+        self.bundled_file.unlink()
+        cb._rm_file_and_backlink(self.bundled_file)
+        assert not self.backlink.exists()
+
+    def test_no_error_if_backlink_missing(self, setup):
+        self.backlink.unlink()
+        cb._rm_file_and_backlink(self.bundled_file)
+        assert not self.bundled_file.exists()
 
 
 # -----------------------------------------------------------
