@@ -43,7 +43,7 @@ def _tree(p: Path) -> None:
 # Function-local fixtures:
 #
 @pytest.fixture
-def test_text_file(tmp_path: Path) -> Path:
+def test_file(tmp_path: Path) -> Path:
     filename = tmp_path / "textfiles"
     filename.mkdir()
     filename = filename / "test.conf"
@@ -139,30 +139,30 @@ def test_get_repo(monkeypatch, empty_dir):
 
 class TestBundleFile:
 
-    def test_with_normal_dir(self, test_text_file, empty_dir):
-        _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    def test_with_normal_dir(self, test_file, empty_dir):
+        _bundled_file = cb._bundle_file(test_file, empty_dir)
         _bundled_backlink = cb._suffix(_bundled_file)
         assert _bundled_backlink.is_symlink()
-        assert os.path.samefile(_bundled_backlink, test_text_file)
-        assert test_text_file.is_symlink()
-        assert test_text_file.resolve() == _bundled_file
+        assert os.path.samefile(_bundled_backlink, test_file)
+        assert test_file.is_symlink()
+        assert test_file.resolve() == _bundled_file
 
 
-    def test_with_non_existent_dir(self, test_text_file, empty_dir):
+    def test_with_non_existent_dir(self, test_file, empty_dir):
         _dir = empty_dir / "non-existing-dir"
         with pytest.raises(FileNotFoundError):
-            _ = cb._bundle_file(test_text_file, _dir)
+            _ = cb._bundle_file(test_file, _dir)
 
 
-    def test_adding_to_existent_file(self, test_text_file, empty_dir):
-        _ = cb._bundle_file(test_text_file, empty_dir)
+    def test_adding_to_existent_file(self, test_file, empty_dir):
+        _ = cb._bundle_file(test_file, empty_dir)
         with pytest.raises(cb.FileAlreadyBundledError):
-            cb._bundle_file(test_text_file, empty_dir)
+            cb._bundle_file(test_file, empty_dir)
 
 
-def test_get_associated_target(test_text_file, empty_dir):
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    assert cb._get_associated_target(_bundled_file) == test_text_file
+def test_get_associated_target(test_file, empty_dir):
+    _bundled_file = cb._bundle_file(test_file, empty_dir)
+    assert cb._get_associated_target(_bundled_file) == test_file
     _unbundled_file = empty_dir / "iamnotbundled"
     with pytest.raises(cb.NoBacklinkError):
         cb._get_associated_target(_unbundled_file)
@@ -175,9 +175,9 @@ class TestRestoreFNs:
     target_file: Path
 
     @pytest.fixture
-    def setup(self, test_text_file, empty_dir):
-        self.bundled_file = cb._bundle_file(test_text_file, empty_dir)
-        self.target_file = test_text_file
+    def setup(self, test_file, empty_dir):
+        self.bundled_file = cb._bundle_file(test_file, empty_dir)
+        self.target_file = test_file
         self.backlink = cb._suffix(self.bundled_file)
         assert self.target_file.is_symlink()
         assert self.bundled_file.exists()
@@ -331,8 +331,8 @@ class TestRMFileAndBacklink:
     backlink: Path
 
     @pytest.fixture
-    def setup(self, empty_dir, test_text_file):
-        self.bundled_file = cb._bundle_file(test_text_file, empty_dir)
+    def setup(self, empty_dir, test_file):
+        self.bundled_file = cb._bundle_file(test_file, empty_dir)
         self.backlink = cb._suffix(self.bundled_file)
         assert self.bundled_file.exists()
         assert self.backlink.is_symlink()
@@ -363,12 +363,12 @@ class TestCMDAdd:
     file: Path
 
     @pytest.fixture
-    def setup(self, test_text_file, empty_repo, req_bundledir_strings):
+    def setup(self, test_file, empty_repo, req_bundledir_strings):
         _dir = _add_if_not_none(empty_repo, req_bundledir_strings)
-        _bundled_file = _dir / test_text_file.name
+        _bundled_file = _dir / test_file.name
         self.bundled_file = _bundled_file
         self.cmd_bundle_dir = req_bundledir_strings
-        self.file = test_text_file
+        self.file = test_file
 
     def test_add(self, setup):
         cb.add(self.file, self.cmd_bundle_dir)
@@ -389,19 +389,19 @@ class TestCMDRestore:
     cmd_arg: str
 
     @pytest.fixture
-    def setup(self, test_text_file, empty_repo, req_bundledir_strings):
-        """Bundle TEST_TEXT_FILE in REQ_BUNDLEDIR_STRINGS, which could be None."""
+    def setup(self, test_file, empty_repo, req_bundledir_strings):
+        """Bundle TEST_FILE in REQ_BUNDLEDIR_STRINGS, which could be None."""
         if req_bundledir_strings:
-            _cmd_arg = Path(req_bundledir_strings, test_text_file.name)
+            _cmd_arg = Path(req_bundledir_strings, test_file.name)
             _bundle_dir = empty_repo / req_bundledir_strings
         else:
-            _cmd_arg = Path(test_text_file.name)
+            _cmd_arg = Path(test_file.name)
             _bundle_dir = empty_repo
         print(f"_bundle_dir = {_bundle_dir}")
         _bundle_dir.mkdir(parents=True, exist_ok=True)
-        self.bundled_file = cb._bundle_file(test_text_file, _bundle_dir)
+        self.bundled_file = cb._bundle_file(test_file, _bundle_dir)
         self.bundle_dir = _bundle_dir
-        self.target_file = test_text_file
+        self.target_file = test_file
         self.cmd_arg = str(_cmd_arg)
 
     def test_cmd_restore_as_file(self, setup):
@@ -435,6 +435,28 @@ class TestCMDRestore:
             cb.restore(self.cmd_arg, True, False, False)
 
 
+class TestCMDRm:
+
+    bundled_file: Path
+    backlink_file: Path
+    cmd_bundle_file: str
+    
+    @pytest.fixture
+    def setup(self, empty_repo, test_file):
+        self.bundled_file = cb._bundle_file(test_file, empty_repo)
+        self.backlink_file = cb._suffix(self.bundled_file)
+        self.cmd_bundle_file = test_file.name
+        assert self.bundled_file.exists()
+        assert self.backlink_file.exists()
+        assert self.backlink_file.is_symlink()
+
+    def test_force_regular_file(self, setup):
+        cb.rm(self.cmd_bundle_file, force=True)
+        assert not self.bundled_file.exists()
+
+    def test_file_not_found(self, setup):
+        with pytest.raises(click.exceptions.Exit):
+            cb.rm("non-existing-file", force=True)
 
 
 # TODO Rewrite using the new bundlepath arg
@@ -471,7 +493,7 @@ class TestCMDRestore:
 #     assert not empty_dir.exists()
 
 
-def test_cmd_destroy(test_text_file, empty_dir):
+def test_cmd_destroy(test_file, empty_dir):
     pass
 
 
