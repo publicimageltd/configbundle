@@ -137,18 +137,27 @@ def test_get_repo(monkeypatch, empty_dir):
         cb.get_repo()
 
 
-def test_bundle_file(test_text_file, empty_dir):
-    assert not test_text_file.is_symlink()
-    _bundled_file = cb._bundle_file(test_text_file, empty_dir)
-    _tree(test_text_file.parent)
-    _tree(empty_dir)
-    _bundled_backlink = cb._suffix(_bundled_file)
-    assert _bundled_backlink.is_symlink()
-    assert os.path.samefile(_bundled_backlink, test_text_file)
-    assert test_text_file.is_symlink()
-    assert test_text_file.resolve() == _bundled_file
-    with pytest.raises(cb.FileAlreadyBundledError):
-        cb._bundle_file(_bundled_file, empty_dir)
+class TestBundleFile:
+
+    def test_with_normal_dir(self, test_text_file, empty_dir):
+        _bundled_file = cb._bundle_file(test_text_file, empty_dir)
+        _bundled_backlink = cb._suffix(_bundled_file)
+        assert _bundled_backlink.is_symlink()
+        assert os.path.samefile(_bundled_backlink, test_text_file)
+        assert test_text_file.is_symlink()
+        assert test_text_file.resolve() == _bundled_file
+
+
+    def test_with_non_existent_dir(self, test_text_file, empty_dir):
+        _dir = empty_dir / "non-existing-dir"
+        with pytest.raises(FileNotFoundError):
+            _ = cb._bundle_file(test_text_file, _dir)
+
+
+    def test_adding_to_existent_file(self, test_text_file, empty_dir):
+        _ = cb._bundle_file(test_text_file, empty_dir)
+        with pytest.raises(cb.FileAlreadyBundledError):
+            cb._bundle_file(test_text_file, empty_dir)
 
 
 def test_get_associated_target(test_text_file, empty_dir):
