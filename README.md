@@ -1,6 +1,27 @@
 # Configbundle
 
-**WORK IN PROGRESS**
+## DISCONTINUED
+
+After several changes and revisions, I was close to release a first
+"workable" version. And then I discovered
+[stow](https://www.gnu.org/software/stow/manual/stow.html), which does
+exactly what I envisioned, and has a much better way of 'stowing away'
+(bundling) configuration files. They found a way to solve the
+conceptual problem of how to track the "bundled" files and their
+targets which needs no "backlinks". Instead, they just store the
+configuration files in a directory structure which mirrors the target
+directory tree. This is really much more robust than my approach and
+simply a very, very good idea. In particular, this approach eliminates
+all risk of losing data, since all information about the configuration
+files (their target location) is hard-coded into the directory
+structure of the configuration bundle. This is transparent, solid, and
+simply good,
+
+So for the moment being, I call it a day and leave the repository as
+it is for now. I did some Python exercises, so that's fine for me, but
+don't use this script.
+
+## Project description
 
 Organize configuration files in bundles.
 
@@ -11,25 +32,14 @@ spread all over the file system as one meaningful unit, e.g. by
 keeping the bundle under version control or exporting it as an archive
 for backup.
 
-## Example
+## State of development
 
-TODO
-
-## Command Overview
-
-`cbundle add` : Add FILE to BUNDLE, replacing it with a link to the bundled file.
-
-`cbundle copy` : Copy FILE in BUNDLE to TARGET_FILE.
-
-`cbundle init` : Initialize bundle.
-
-`cbundle ls` : Display the contents of BUNDLE, not descending into directories.
-
-`cbundle restore` : Copy FILE to the location defined by its associated .link file.
-
-`cbundle rm` : Remove FILE in the bundle and it associated link.
-
-`cbundle rmdir`  :Remove BUNDLE and its contents.
+See the introductory note above. If one would want to revive the
+script, there is currently still a bug in the way the "unbundling"
+works (see the comments in the code). Since this bug is caused by my
+original approach to store a backlink with every file, this bug is
+actually an expression of a bad conceptual approach and actually need
+not be.
 
 ## About the repository
 
