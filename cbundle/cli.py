@@ -180,9 +180,9 @@ def _ignore(file: Path) -> bool:
 
 
 # NOTE No tests
-def _relevant_files(bundle_dir: Path) -> list[Path]:
-    """Filter out ignored files in BUNDLE_DIR (recursing)."""
-    return list(filter(lambda x: not _ignore(x),
+def _possibly_bundled_files(bundle_dir: Path) -> list[Path]:
+    """Filter out ignored files and backlinks in BUNDLE_DIR (recursing)."""
+    return list(filter(lambda x: not _ignore(x) and not _is_suffixed(x),
                        bundle_dir.rglob('*')))
 
 # NOTE No tests
@@ -385,7 +385,7 @@ def _restore_dir_copy(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (copy) all files bundled in BUNDLE_DIR and subdirectories."""
     def _restore_fn(p: Path) -> Path:
         return _restore_copy(p, overwrite)
-    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+    return _act_on_paths(_possibly_bundled_files(bundle_dir), _restore_fn)
 
 
 # NOTE No tests
@@ -393,7 +393,7 @@ def _restore_dir_as_link(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (as link) all files bundled in BUNDLE_DIR and its subdirectories."""
     def _restore_fn(p: Path) -> Path:
         return _restore_as_link(p, overwrite)
-    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+    return _act_on_paths(_possibly_bundled_files(bundle_dir), _restore_fn)
 
 
 # NOTE No tests
@@ -401,7 +401,7 @@ def _restore_dir_dry_run(bundle_dir: Path, overwrite: bool) -> list[dict]:
     """Restore (dry run) all files bundled in BUNDLE_DIR and its subdirectories."""
     def _restore_fn(p: Path) -> Path:
         return _restore_dry_run(p, overwrite)
-    return _act_on_paths(_relevant_files(bundle_dir), _restore_fn)
+    return _act_on_paths(_possibly_bundled_files(bundle_dir), _restore_fn)
 
 
 def _removable(result_list: list[dict]) -> list[Path]:
@@ -534,27 +534,46 @@ def rmdir(bundle_dir: str,
     shutil.rmtree(str(_dir))
 
 
+# TODO HEREAMI
+# Problem:
+#  1. Der loop via rglob schließt BUNDLE_DIR selbst nicht ein; es wird
+#     also kein directory als mögliches Argument übergeben 
+#  2. Selbst wenn wir dann ein directory übergeben, muss es
+#     rausgefiltert werden; am besten VOR restore_copy?
+
 # TODO Write test
 @cli.command()
 def unbundle(bundle_dir: Annotated[Optional[str],
                                    typer.Argument()] = None) -> None:
-    """Restore BUNDLE_DIR and delete bundled files.
-    Note: This uncondtionally replaces all backlinked files with the bundled files."""
+    """Restore BUNDLE_DIR and delete it and its bundled files.
+    Note: This unconditionally replaces all backlinked files with the bundled files."""
     if not bundle_dir:
         typer.confirm("Are you sure you want to unbundle the whole repository?",
                       default=False, abort=True)
 
     _bundle_dir = _get_bundle_dir(bundle_dir)
-    # NOTE Dry run active!
-#    _results = _restore_dir_copy(_bundle_dir, True)
-    _results = _restore_dir_dry_run(_bundle_dir, True)
+    print(list(_bundle_dir.rglob('*')))
+    _results = _restore_dir_copy(_bundle_dir, overwrite=True)
+#    _results = _restore_dir_dry_run(_bundle_dir, True)
     _restored, _failed = _split_results(_results)
     for _dict in _restored:
         print(f"{_dict['path']} has been restored as {_dict['result']}")
     for _dict in _failed:
         print(f"{_dict['path']} could not be restored: {_dict['result']}")
-    for _path in _files_first(_removable(_results)):
-        print(f"Deleting {_path}")
+    print("Results", _results)
+    _delete_me = _files_first(_removable(_results))
+    print(_delete_me)
+    for _path in _delete_me:
+        print(f"Deleting {_path}", end='')
+        if not _path.is_dir():
+            _rm_file_and_backlink(_path)
+        else:
+            if list(_path.glob('*')):
+                print(" - directory not empty, skipping")
+                raise typer.Exit(1)
+            else:
+                print()
+                _path.rmdir()
 
 
 # TODO Write tests

@@ -545,25 +545,47 @@ class TestCMDRmdir:
         print(result.output)
         assert result.exit_code == 0
         assert not self.bundle_dir.exists()
-    
-        
 
 
-# TODO Rewrite using the new bundlepath arg
-# def test_cmd_rmdir(empty_dir, monkeypatch):
-#     monkeypatch.setattr(cb, "get_bundle", lambda x: empty_dir)
+class TestCMDUnbundle:
 
-#     def write_test_file(filename):
-#         with open(filename, 'w') as file:
-#             file.writelines(['dummy content', 'two lines'])
+    bundled_file: Path
+    target_file: Path
+    backlink: Path
+    bundle_dir: Path
+    cmd_bundle_dir: str
 
-#     Path(empty_dir / "testdir").mkdir()
-#     write_test_file(empty_dir / "testfile")
-#     write_test_file(empty_dir / "testdir" / "testfile")
-#     write_test_file(empty_dir / ".another_testfile")
+    @pytest.fixture
+    def setup(self, empty_repo, test_file):
+        self.cmd_bundle_dir = "bundle_dir"
+        self.bundle_dir = empty_repo / self.cmd_bundle_dir
+        self.bundle_dir.mkdir(parents=True, exist_ok=True)
+        self.bundled_file = cb._bundle_file(test_file, self.bundle_dir)
+        self.backlink = cb._suffix(self.bundled_file)
+        self.target_file = cb._get_associated_target(self.bundled_file)
 
-#     cb.rmdir(IGNORE_BUNDLE_ARG)
-#     assert not empty_dir.exists()
+    def test_regular_case(self, setup):
+        cb.unbundle(self.cmd_bundle_dir)
+        assert not self.backlink.exists()
+        assert not self.bundled_file.exists()
+        assert not self.bundle_dir.exists()
+        assert self.target_file.exists()
+        assert not self.target_file.is_symlink()
+
+    def test_backlink_missing(self, setup):
+        self.backlink.unlink()
+        cb.unbundle(self.cmd_bundle_dir)
+        assert self.bundled_file.exists()
+        assert self.bundle_dir.exists()
+        assert self.target_file.is_symlink()
+
+    def test_file_missing(self, setup):
+        self.bundled_file.unlink()
+        cb.unbundle(self.cmd_bundle_dir)
+        assert self.backlink.exists()
+        assert self.bundle_dir.exists()
+        assert self.target_file.is_symlink()
+
 
 
 def test_cmd_destroy(test_file, empty_dir):
